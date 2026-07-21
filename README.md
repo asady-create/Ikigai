@@ -17,7 +17,7 @@ A personal purpose-discovery and reflection tool inspired by Marc Andreessen’s
 |-------|--------|
 | `/` Home | Full — hero quote, momentum, nav cards, daily prompt |
 | `/reflections` | Full — prompt library, journal editor, energy/clarity, AI insights placeholder, Markdown export |
-| `/canvas` | Stub — ready to extend |
+| `/canvas` | Full — Ikigai quadrants, core values chips, vision generator |
 | `/goals` | Stub — ready to extend |
 | `/coach` | Stub — ready to extend |
 | `/review` | Stub — ready to extend |

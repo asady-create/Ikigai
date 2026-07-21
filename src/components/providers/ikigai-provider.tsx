@@ -8,11 +8,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AppData, InsightResult, ReflectionEntry } from "@/lib/types";
+import type {
+  AppData,
+  InsightResult,
+  PurposeCanvas,
+  ReflectionEntry,
+} from "@/lib/types";
 import {
   deleteReflection as storageDelete,
   getInsights,
   loadAppData,
+  saveCanvas as storageSaveCanvas,
   saveInsights as storageSaveInsights,
   saveReflection as storageSave,
 } from "@/lib/storage";
@@ -25,6 +31,7 @@ interface IkigaiStore {
   upsertReflection: (entry: ReflectionEntry) => void;
   removeReflection: (id: string) => void;
   setInsights: (insights: InsightResult) => void;
+  upsertCanvas: (canvas: PurposeCanvas) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -57,6 +64,11 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setData({ ...next });
   }, []);
 
+  const upsertCanvas = useCallback((canvas: PurposeCanvas) => {
+    storageSaveCanvas(canvas);
+    setData(loadAppData());
+  }, []);
+
   const reflections = [...data.reflections].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -71,6 +83,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         upsertReflection,
         removeReflection,
         setInsights,
+        upsertCanvas,
       }}
     >
       {children}

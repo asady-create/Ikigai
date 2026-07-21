@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import { ComingSoon } from "@/components/shared/coming-soon";
+import { PurposeCanvasPage } from "@/components/canvas/purpose-canvas";
 
 export const metadata: Metadata = {
   title: "Purpose Canvas",
+  description:
+    "Ikigai quadrants, core values, and a one-paragraph vision statement — map what you're aiming at.",
 };
 
 export default function CanvasPage() {
-  return (
-    <ComingSoon
-      title="Purpose Canvas"
-      description="Wheel of Life, Ikigai quadrants, core values, and a vision statement generator — coming in the next iteration."
-      offset={2}
-    />
-  );
+  return <PurposeCanvasPage />;
 }
