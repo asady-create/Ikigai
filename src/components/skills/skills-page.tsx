@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Plus, X } from "lucide-react";
+import { ArrowRightLeft, Check, Plus, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { PurposeMap, Skill } from "@/lib/types";
 import { createEmptyMap } from "@/lib/synthesis";
@@ -19,7 +19,10 @@ function SkillColumn({
   setDraft,
   onAdd,
   onRemove,
+  onRename,
   onNote,
+  onMove,
+  moveLabel,
   accent,
 }: {
   title: string;
@@ -29,7 +32,10 @@ function SkillColumn({
   setDraft: (v: string) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  onRename: (id: string, name: string) => void;
   onNote: (id: string, note: string) => void;
+  onMove: (id: string) => void;
+  moveLabel: string;
   accent: "have" | "lack";
 }) {
   return (
@@ -53,13 +59,28 @@ function SkillColumn({
               accent === "lack" && "border-l-2 border-l-[var(--accent)]"
             )}
           >
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-medium text-[var(--foreground)]">{skill.name}</p>
+            <div className="flex items-start gap-2">
+              <Input
+                value={skill.name}
+                onChange={(e) => onRename(skill.id, e.target.value)}
+                aria-label="Skill name"
+                placeholder="Skill name"
+                className="h-9 flex-1 border-transparent bg-transparent px-0 font-medium shadow-none focus-visible:border-[var(--border)] focus-visible:bg-[var(--background)] focus-visible:px-2 focus-visible:ring-1"
+              />
+              <button
+                type="button"
+                onClick={() => onMove(skill.id)}
+                className="shrink-0 rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+                aria-label={moveLabel}
+                title={moveLabel}
+              >
+                <ArrowRightLeft className="size-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => onRemove(skill.id)}
-                className="rounded p-0.5 text-[var(--muted)] transition hover:text-red-600"
-                aria-label={`Remove ${skill.name}`}
+                className="shrink-0 rounded p-1.5 text-[var(--muted)] transition hover:text-red-600"
+                aria-label={`Remove ${skill.name || "skill"}`}
               >
                 <X className="size-4" />
               </button>
@@ -67,8 +88,8 @@ function SkillColumn({
             <Input
               value={skill.note}
               onChange={(e) => onNote(skill.id, e.target.value)}
-              placeholder="Optional note"
-              className="mt-2 h-8 border-transparent bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+              placeholder="Optional note — level, proof, why it matters"
+              className="mt-1.5 h-8 border-transparent bg-transparent px-0 text-xs shadow-none focus-visible:border-[var(--border)] focus-visible:bg-[var(--background)] focus-visible:px-2 focus-visible:ring-1"
             />
           </li>
         ))}
@@ -147,6 +168,43 @@ export function SkillsPage() {
     ]);
   };
 
+  const renameSkill = (
+    list: "skillsHave" | "skillsLack",
+    id: string,
+    name: string
+  ) => {
+    updateSkills(
+      list,
+      map[list].map((s) => (s.id === id ? { ...s, name } : s))
+    );
+  };
+
+  const noteSkill = (
+    list: "skillsHave" | "skillsLack",
+    id: string,
+    note: string
+  ) => {
+    updateSkills(
+      list,
+      map[list].map((s) => (s.id === id ? { ...s, note } : s))
+    );
+  };
+
+  const moveSkill = (from: "skillsHave" | "skillsLack", id: string) => {
+    const to = from === "skillsHave" ? "skillsLack" : "skillsHave";
+    const skill = map[from].find((s) => s.id === id);
+    if (!skill) return;
+    setMap((prev) => {
+      const next: PurposeMap = {
+        ...prev,
+        [from]: prev[from].filter((s) => s.id !== id),
+        [to]: [...prev[to], skill],
+      };
+      persist(next);
+      return next;
+    });
+  };
+
   if (!ready) {
     return (
       <div className="animate-pulse space-y-4 py-8">
@@ -170,8 +228,8 @@ export function SkillsPage() {
             Have vs lack
           </h1>
           <p className="mt-2 max-w-md text-sm text-[var(--muted)]">
-            List what you already bring — and what still blocks the purpose you
-            wrote on the Map.
+            Classic ikigai: what you’re good at. Edit names and notes inline.
+            Move a skill between columns if it changes.
           </p>
         </div>
         <span
@@ -194,11 +252,12 @@ export function SkillsPage() {
       >
         <SkillColumn
           title="I have"
-          subtitle="Skills you can already use."
+          subtitle="Skills you can already use. Click a name to edit."
           skills={map.skillsHave}
           draft={haveDraft}
           setDraft={setHaveDraft}
           accent="have"
+          moveLabel="Move to lack"
           onAdd={() => {
             addSkill("skillsHave", haveDraft);
             setHaveDraft("");
@@ -209,20 +268,18 @@ export function SkillsPage() {
               map.skillsHave.filter((s) => s.id !== id)
             )
           }
-          onNote={(id, note) =>
-            updateSkills(
-              "skillsHave",
-              map.skillsHave.map((s) => (s.id === id ? { ...s, note } : s))
-            )
-          }
+          onRename={(id, name) => renameSkill("skillsHave", id, name)}
+          onNote={(id, note) => noteSkill("skillsHave", id, note)}
+          onMove={(id) => moveSkill("skillsHave", id)}
         />
         <SkillColumn
           title="I lack"
-          subtitle="Skills required for what you want."
+          subtitle="Skills required for what you want. Edit anytime."
           skills={map.skillsLack}
           draft={lackDraft}
           setDraft={setLackDraft}
           accent="lack"
+          moveLabel="Move to have"
           onAdd={() => {
             addSkill("skillsLack", lackDraft);
             setLackDraft("");
@@ -233,12 +290,9 @@ export function SkillsPage() {
               map.skillsLack.filter((s) => s.id !== id)
             )
           }
-          onNote={(id, note) =>
-            updateSkills(
-              "skillsLack",
-              map.skillsLack.map((s) => (s.id === id ? { ...s, note } : s))
-            )
-          }
+          onRename={(id, name) => renameSkill("skillsLack", id, name)}
+          onNote={(id, note) => noteSkill("skillsLack", id, note)}
+          onMove={(id) => moveSkill("skillsLack", id)}
         />
       </motion.div>
     </div>

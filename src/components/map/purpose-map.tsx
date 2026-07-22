@@ -14,6 +14,7 @@ const FIELDS: {
   key: keyof Pick<PurposeMap, "want" | "offer" | "need" | "reward">;
   id: string;
   title: string;
+  classic: string;
   question: string;
   placeholder: string;
 }[] = [
@@ -21,28 +22,34 @@ const FIELDS: {
     key: "want",
     id: "want",
     title: "What I want",
-    question: "What do you actually want — specifically?",
+    classic: "What you love",
+    question:
+      "What do you want badly enough to rearrange your life for? Be specific.",
     placeholder: "e.g. Build and own a product that helps X do Y without Z.",
   },
   {
     key: "offer",
     id: "offer",
     title: "What I deliver",
-    question: "What will you build or deliver that others want to own or use?",
+    classic: "Intersection — love × skill × need",
+    question:
+      "What will you build or deliver that other people would want to own or use?",
     placeholder: "e.g. A tool, service, or body of work people would pay for.",
   },
   {
     key: "need",
     id: "need",
     title: "Who needs it",
-    question: "Who needs this, and why do they care?",
+    classic: "What the world needs",
+    question: "Who needs this, and why do they care enough to act?",
     placeholder: "e.g. Freelancers who waste hours on admin every week.",
   },
   {
     key: "reward",
     id: "reward",
     title: "How I’m rewarded",
-    question: "How do you want society to reward you?",
+    classic: "What you can be paid for",
+    question: "How do you want society to reward you for delivering this?",
     placeholder: "e.g. Recurring revenue, equity, reputation, freedom of time.",
   },
 ];
@@ -109,7 +116,8 @@ export function PurposeMapPage() {
             Four questions
           </h1>
           <p className="mt-2 max-w-md text-sm text-[var(--muted)]">
-            Answer plainly. Skills live on the Skills page.
+            Mapped to classic ikigai. Skills (what you’re good at) are on the
+            Skills page — edit them anytime.
           </p>
         </div>
         <span
@@ -135,9 +143,14 @@ export function PurposeMapPage() {
             transition={{ delay: i * 0.05, duration: 0.35 }}
             className="scroll-mt-24"
           >
-            <h2 className="font-display text-xl font-semibold text-[var(--foreground)]">
-              {field.title}
-            </h2>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-display text-xl font-semibold text-[var(--foreground)]">
+                {field.title}
+              </h2>
+              <span className="text-xs text-[var(--muted)]">
+                ← {field.classic}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-[var(--muted)]">{field.question}</p>
             <Textarea
               value={map[field.key]}

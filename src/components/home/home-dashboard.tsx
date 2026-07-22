@@ -4,42 +4,46 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Minus, Download } from "lucide-react";
 import { useIkigai } from "@/components/providers/ikigai-provider";
+import { IkigaiDiagram } from "@/components/shared/ikigai-diagram";
 import { mapProgress } from "@/lib/synthesis";
 import { downloadMarkdown } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+const ANDREESSEN_QUOTE =
+  "The world is a very malleable place. If you know what you want, and you go for it with maximum energy and drive and passion, the world will often reconfigure itself around you much more quickly and easily than you would think.";
+
 const SECTIONS = [
   {
     key: "want" as const,
     label: "What I want",
     href: "/map#want",
-    hint: "Direction",
+    hint: "Love / direction",
   },
   {
     key: "offer" as const,
     label: "What I deliver",
     href: "/map#offer",
-    hint: "Product / service",
+    hint: "What others use",
   },
   {
     key: "need" as const,
     label: "Who needs it",
     href: "/map#need",
-    hint: "Demand",
+    hint: "World needs",
   },
   {
     key: "reward" as const,
     label: "How I’m rewarded",
     href: "/map#reward",
-    hint: "Exchange",
+    hint: "Paid for",
   },
   {
     key: "skillsHave" as const,
     label: "Skills I have",
     href: "/skills",
-    hint: "Assets",
+    hint: "Good at",
   },
   {
     key: "skillsLack" as const,
@@ -66,7 +70,8 @@ export function HomeDashboard() {
   }
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-14">
+      {/* Hero — brand + Andreessen quote + CTA */}
       <section className="pt-2 sm:pt-4">
         <motion.p
           initial={{ opacity: 0 }}
@@ -75,23 +80,19 @@ export function HomeDashboard() {
         >
           Ikigai 2.0
         </motion.p>
-        <motion.h1
+        <motion.blockquote
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.4 }}
-          className="mt-3 font-display text-4xl font-bold tracking-tight text-[var(--foreground)] sm:text-5xl"
+          transition={{ delay: 0.05, duration: 0.45 }}
+          className="mt-5 max-w-2xl border-l-2 border-[var(--accent)] pl-5 sm:pl-6"
         >
-          Figure out what you want.
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 }}
-          className="mt-3 max-w-lg text-[var(--muted)]"
-        >
-          Map your purpose, skills, and how you want to be rewarded. Keep it
-          precise.
-        </motion.p>
+          <p className="font-display text-xl leading-snug font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl sm:leading-snug">
+            {ANDREESSEN_QUOTE}
+          </p>
+          <footer className="mt-4 text-sm text-[var(--muted)]">
+            — Marc Andreessen
+          </footer>
+        </motion.blockquote>
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -121,15 +122,25 @@ export function HomeDashboard() {
         </motion.div>
       </section>
 
+      {/* Classic ikigai — graphical reference before prompts */}
       <motion.section
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.25 }}
+        transition={{ delay: 0.22 }}
+        className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-6 sm:px-6 sm:py-8"
+      >
+        <IkigaiDiagram />
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.28 }}
         className="space-y-3"
       >
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
-            Progress
+            Your map
           </h2>
           <span className="text-sm tabular-nums text-[var(--muted)]">
             {progress.filled}/{progress.total}
@@ -177,7 +188,7 @@ export function HomeDashboard() {
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.32 }}
           className="border-l-2 border-[var(--accent)] pl-5"
         >
           <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
@@ -214,7 +225,7 @@ export function HomeDashboard() {
           </ul>
           <Button asChild variant="ghost" className="mt-3 px-0">
             <Link href="/skills">
-              Manage skills
+              Edit skills
               <ArrowRight />
             </Link>
           </Button>
