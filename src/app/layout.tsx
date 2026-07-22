@@ -23,19 +23,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Ikigai — Know what you want",
-    template: "%s · Ikigai",
+    default: "Ikigai 2.0",
+    template: "%s · Ikigai 2.0",
   },
   description:
-    "A personal purpose-discovery and reflection tool. The world is malleable — pursue what you want with maximum energy.",
-  keywords: [
-    "ikigai",
-    "purpose",
-    "reflection",
-    "marc andreessen",
-    "career",
-    "journal",
-  ],
+    "A private purpose map: what you want, skills you have and lack, how you want to be rewarded, and what you’ll deliver.",
 };
 
 export default function RootLayout({
@@ -44,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body
         className={`${dmSans.variable} ${syne.variable} ${geistMono.variable} antialiased`}
       >

@@ -2,234 +2,224 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  Compass,
-  Flame,
-  MessageSquare,
-  PenLine,
-  Target,
-  BarChart3,
-  Zap,
-} from "lucide-react";
-import { QuoteBlock } from "@/components/shared/quote-block";
-import { getRotatingQuote } from "@/lib/quotes";
-import { getDailyPrompt } from "@/lib/prompts";
+import { ArrowRight, Check, Minus, Download } from "lucide-react";
 import { useIkigai } from "@/components/providers/ikigai-provider";
+import { mapProgress } from "@/lib/synthesis";
+import { downloadMarkdown } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-const NAV_CARDS = [
+const SECTIONS = [
   {
-    href: "/reflections",
-    title: "Reflections",
-    description: "Open-ended prompts. Write hard truths. Rate your energy.",
-    icon: PenLine,
-    cta: "Reflect now",
+    key: "want" as const,
+    label: "What I want",
+    href: "/map#want",
+    hint: "Direction",
   },
   {
-    href: "/canvas",
-    title: "Purpose Canvas",
-    description: "Ikigai, values, vision — map what you're aiming at.",
-    icon: Compass,
-    cta: "Open canvas",
+    key: "offer" as const,
+    label: "What I deliver",
+    href: "/map#offer",
+    hint: "Product / service",
   },
   {
-    href: "/goals",
-    title: "Goals Portfolio",
-    description: "Treat goals like bets. Track skills and opportunities.",
-    icon: Target,
-    cta: "View portfolio",
+    key: "need" as const,
+    label: "Who needs it",
+    href: "/map#need",
+    hint: "Demand",
   },
   {
-    href: "/coach",
-    title: "AI Coach",
-    description: "Strategic, no-BS counsel in the pmarca spirit.",
-    icon: MessageSquare,
-    cta: "Talk strategy",
+    key: "reward" as const,
+    label: "How I’m rewarded",
+    href: "/map#reward",
+    hint: "Exchange",
   },
   {
-    href: "/review",
-    title: "Review",
-    description: "Momentum, streaks, export your journal.",
-    icon: BarChart3,
-    cta: "Review progress",
+    key: "skillsHave" as const,
+    label: "Skills I have",
+    href: "/skills",
+    hint: "Assets",
+  },
+  {
+    key: "skillsLack" as const,
+    label: "Skills I lack",
+    href: "/skills",
+    hint: "Gaps",
   },
 ];
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.07, delayChildren: 0.15 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 16 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-  },
-};
-
 export function HomeDashboard() {
-  const quote = getRotatingQuote(0);
-  const daily = getDailyPrompt();
-  const { data, ready, reflections } = useIkigai();
-  const streak = data.streak;
-  const avgEnergy =
-    reflections.length > 0
-      ? reflections.reduce((s, r) => s + r.energy, 0) / reflections.length
-      : 0;
-  const avgClarity =
-    reflections.length > 0
-      ? reflections.reduce((s, r) => s + r.clarity, 0) / reflections.length
-      : 0;
+  const { ready, data } = useIkigai();
+  const map = data.map;
+  const progress = mapProgress(map);
+  const pct = Math.round((progress.filled / progress.total) * 100);
+  const next = SECTIONS.find((s) => !progress[s.key]);
+
+  if (!ready) {
+    return (
+      <div className="animate-pulse space-y-4 py-8">
+        <div className="h-10 w-48 rounded bg-[var(--surface-2)]" />
+        <div className="h-24 rounded-xl bg-[var(--surface-2)]" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-14">
-      {/* Hero — brand + one quote + one CTA. No card clutter. */}
-      <section className="relative overflow-hidden pb-2 pt-4 sm:pt-8">
+    <div className="space-y-12">
+      <section className="pt-2 sm:pt-4">
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mb-3 font-display text-sm font-semibold uppercase tracking-[0.2em] text-amber-500/90"
+          className="font-display text-sm font-semibold tracking-[0.18em] text-[var(--accent)] uppercase"
         >
-          Ikigai
+          Ikigai 2.0
         </motion.p>
         <motion.h1
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.45 }}
-          className="font-display text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl md:text-6xl"
-        >
-          Know what you want.
-          <br />
-          <span className="text-zinc-400">Then move with maximum energy.</span>
-        </motion.h1>
-        <div className="mt-8 max-w-3xl border-l-2 border-amber-500/60 pl-5 sm:pl-6">
-          <QuoteBlock quote={quote} large />
-        </div>
-        <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="mt-10 flex flex-wrap items-center gap-3"
+          transition={{ delay: 0.05, duration: 0.4 }}
+          className="mt-3 font-display text-4xl font-bold tracking-tight text-[var(--foreground)] sm:text-5xl"
+        >
+          Figure out what you want.
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="mt-3 max-w-lg text-[var(--muted)]"
+        >
+          Map your purpose, skills, and how you want to be rewarded. Keep it
+          precise.
+        </motion.p>
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-8 flex flex-wrap gap-3"
         >
           <Button asChild size="lg" variant="accent">
-            <Link href="/reflections">
-              Start today&apos;s reflection
+            <Link href={next?.href ?? "/map"}>
+              {progress.filled === 0
+                ? "Start your map"
+                : next
+                  ? `Continue — ${next.label}`
+                  : "Review map"}
               <ArrowRight />
             </Link>
           </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link href="/coach">Generate next action</Link>
-          </Button>
+          {map && (
+            <Button
+              size="lg"
+              variant="secondary"
+              onClick={() => downloadMarkdown()}
+            >
+              <Download />
+              Export
+            </Button>
+          )}
         </motion.div>
       </section>
 
-      {/* Momentum strip */}
       <motion.section
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="grid gap-4 sm:grid-cols-3"
+        transition={{ delay: 0.25 }}
+        className="space-y-3"
       >
-        <div className="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-4 py-3">
-          <Flame className="size-5 text-amber-500" />
-          <div>
-            <p className="text-xs text-zinc-500">Streak</p>
-            <p className="font-display text-xl font-semibold text-zinc-100">
-              {ready ? streak.currentStreak : "—"}{" "}
-              <span className="text-sm font-normal text-zinc-500">days</span>
-            </p>
-          </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+            Progress
+          </h2>
+          <span className="text-sm tabular-nums text-[var(--muted)]">
+            {progress.filled}/{progress.total}
+          </span>
         </div>
-        <div className="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-4 py-3">
-          <PenLine className="size-5 text-zinc-400" />
-          <div>
-            <p className="text-xs text-zinc-500">Reflections</p>
-            <p className="font-display text-xl font-semibold text-zinc-100">
-              {ready ? streak.totalReflections : "—"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-4 py-3">
-          <Zap className="size-5 text-amber-400" />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-zinc-500">Energy / Clarity</p>
-            <p className="font-display text-xl font-semibold text-zinc-100">
-              {reflections.length
-                ? `${avgEnergy.toFixed(1)} / ${avgClarity.toFixed(1)}`
-                : "—"}
-            </p>
-            {reflections.length > 0 && (
-              <Progress value={avgEnergy * 10} className="mt-2" />
-            )}
-          </div>
-        </div>
-      </motion.section>
-
-      {/* Today's prompt tease */}
-      <section className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-950 p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-amber-500/80">
-          Today&apos;s prompt
-        </p>
-        <h2 className="mt-2 font-display text-2xl font-semibold text-zinc-50">
-          {daily.title}
-        </h2>
-        <p className="mt-2 max-w-2xl text-zinc-400">{daily.prompt}</p>
-        {daily.nudge && (
-          <p className="mt-3 text-sm italic text-zinc-500">{daily.nudge}</p>
-        )}
-        <Button asChild className="mt-6" variant="secondary">
-          <Link href={`/reflections?prompt=${daily.id}`}>
-            Write your response
-            <ArrowRight />
-          </Link>
-        </Button>
-      </section>
-
-      {/* Navigation cards */}
-      <section>
-        <h2 className="font-display text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          Navigate
-        </h2>
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-        >
-          {NAV_CARDS.map((card) => {
-            const Icon = card.icon;
+        <Progress value={pct} />
+        <ul className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+          {SECTIONS.map((s) => {
+            const done = progress[s.key];
             return (
-              <motion.div key={card.href} variants={item}>
-                <Link href={card.href} className="group block h-full">
-                  <Card className="h-full transition-colors group-hover:border-zinc-600 group-hover:bg-zinc-900/70">
-                    <CardHeader>
-                      <div className="mb-2 flex size-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-300 transition group-hover:border-amber-500/40 group-hover:text-amber-400">
-                        <Icon className="size-4" />
-                      </div>
-                      <CardTitle>{card.title}</CardTitle>
-                      <CardDescription>{card.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <span className="inline-flex items-center gap-1 text-sm text-zinc-400 transition group-hover:text-amber-400">
-                        {card.cta}
-                        <ArrowRight className="size-3.5 transition group-hover:translate-x-0.5" />
-                      </span>
-                    </CardContent>
-                  </Card>
+              <li key={s.key}>
+                <Link
+                  href={s.href}
+                  className="flex items-center gap-3 py-3.5 transition hover:bg-[var(--surface)]/60"
+                >
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-full border",
+                      done
+                        ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                        : "border-[var(--border)] text-[var(--muted)]"
+                    )}
+                  >
+                    {done ? (
+                      <Check className="size-3.5" />
+                    ) : (
+                      <Minus className="size-3.5" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      {s.label}
+                    </span>
+                    <span className="text-xs text-[var(--muted)]">{s.hint}</span>
+                  </span>
+                  <ArrowRight className="size-4 text-[var(--muted)]" />
                 </Link>
-              </motion.div>
+              </li>
             );
           })}
-        </motion.div>
-      </section>
+        </ul>
+      </motion.section>
+
+      {map?.synthesis?.trim() && (
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="border-l-2 border-[var(--accent)] pl-5"
+        >
+          <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+            Synthesis
+          </h2>
+          <p className="mt-3 text-base leading-relaxed text-[var(--foreground)]">
+            {map.synthesis}
+          </p>
+          <Button asChild variant="ghost" className="mt-3 px-0">
+            <Link href="/map#synthesis">
+              Edit
+              <ArrowRight />
+            </Link>
+          </Button>
+        </motion.section>
+      )}
+
+      {map && map.skillsLack.some((s) => s.name.trim()) && (
+        <section>
+          <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+            Gaps to close
+          </h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {map.skillsLack
+              .filter((s) => s.name.trim())
+              .map((s) => (
+                <li
+                  key={s.id}
+                  className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)]"
+                >
+                  {s.name}
+                </li>
+              ))}
+          </ul>
+          <Button asChild variant="ghost" className="mt-3 px-0">
+            <Link href="/skills">
+              Manage skills
+              <ArrowRight />
+            </Link>
+          </Button>
+        </section>
+      )}
     </div>
   );
 }

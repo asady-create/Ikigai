@@ -1,117 +1,39 @@
 /**
- * Shared domain types for Ikigai.
- * Extend these as Canvas, Goals, and Coach features grow.
+ * Ikigai 2.0 — personal purpose map.
+ * Four questions + skill gap. Nothing else.
  */
 
-export type PromptTheme =
-  | "clarity"
-  | "skills"
-  | "opportunities"
-  | "risks"
-  | "energy"
-  | "ikigai"
-  | "double-threat"
-  | "action";
-
-export interface ReflectionPrompt {
+export interface Skill {
   id: string;
-  theme: PromptTheme;
-  title: string;
-  prompt: string;
-  /** Short nudge shown under the prompt — pushes toward action. */
-  nudge?: string;
+  name: string;
+  /** Optional one-line context. */
+  note: string;
 }
 
-export interface ReflectionEntry {
+export interface PurposeMap {
+  /** What do you want? */
+  want: string;
+  /** How do you want society to reward you? */
+  reward: string;
+  /** What will you build or deliver that others want? */
+  offer: string;
+  /** Who needs this, and why? */
+  need: string;
+  skillsHave: Skill[];
+  skillsLack: Skill[];
+  /** Plain synthesis of the above. Editable. */
+  synthesis: string;
+  updatedAt: string;
+}
+
+export interface Note {
   id: string;
-  promptId: string;
-  promptText: string;
-  theme: PromptTheme;
-  /** Markdown-supported journal body. */
   content: string;
-  /** Energy level after reflecting (1–10). */
-  energy: number;
-  /** Clarity level after reflecting (1–10). */
-  clarity: number;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface StreakData {
-  currentStreak: number;
-  longestStreak: number;
-  lastReflectionDate: string | null;
-  totalReflections: number;
-}
-
-export interface InsightResult {
-  patterns: string[];
-  opportunities: string[];
-  actionSteps: string[];
-  summary: string;
-  generatedAt: string;
-}
-
-/** Goal types — ready for Goals Portfolio page. */
-export type GoalCategory =
-  | "career"
-  | "skills"
-  | "impact"
-  | "energy"
-  | "relationships"
-  | "venture";
-
-export interface Milestone {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-export interface Goal {
-  id: string;
-  title: string;
-  description: string;
-  category: GoalCategory;
-  targetDate: string | null;
-  progress: number;
-  milestones: Milestone[];
-  skillsAcquired: string[];
-  opportunitiesPursued: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** Purpose Canvas types — ready for Canvas page. */
-export interface WheelOfLife {
-  career: number;
-  skills: number;
-  impact: number;
-  energy: number;
-  relationships: number;
-  creativity: number;
-  adventure: number;
-  wealth: number;
-}
-
-export interface IkigaiCanvas {
-  love: string;
-  goodAt: string;
-  worldNeeds: string;
-  paidFor: string;
-}
-
-export interface PurposeCanvas {
-  wheel: WheelOfLife;
-  ikigai: IkigaiCanvas;
-  values: string[];
-  visionStatement: string;
   updatedAt: string;
 }
 
 export interface AppData {
-  reflections: ReflectionEntry[];
-  goals: Goal[];
-  canvas: PurposeCanvas | null;
-  streak: StreakData;
-  insights: InsightResult | null;
+  map: PurposeMap | null;
+  notes: Note[];
 }

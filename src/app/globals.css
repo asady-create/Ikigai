@@ -1,13 +1,15 @@
 @import "tailwindcss";
 
-/* ── Design tokens — dark zinc by default ───────────────── */
+/* Cool stone + ink — light minimalist, not cream/terracotta */
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
-  --muted: #a1a1aa;
-  --accent: #f59e0b;
-  --border: #27272a;
-  --card: #18181b;
+  --background: #f3f4f6;
+  --foreground: #12141a;
+  --muted: #5c6370;
+  --accent: #0d5c63;
+  --accent-soft: #e4f0f1;
+  --border: #d8dce3;
+  --surface: #ffffff;
+  --surface-2: #eceef2;
 }
 
 @theme inline {
@@ -15,20 +17,22 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
   --color-border: var(--border);
-  --color-card: var(--card);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --font-sans: var(--font-dm-sans);
   --font-display: var(--font-syne);
   --font-mono: var(--font-geist-mono);
 }
 
-/* Display utility used across brand/headlines */
 .font-display {
-  font-family: var(--font-syne), var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-syne), var(--font-dm-sans), ui-sans-serif, system-ui,
+    sans-serif;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -38,24 +42,11 @@ body {
   min-height: 100dvh;
 }
 
-/* Selection */
 ::selection {
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: #fff;
 }
 
-/* Range input polish */
-input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 9999px;
-  background: #f59e0b;
-  cursor: pointer;
-  border: 2px solid #09090b;
-}
-
-/* Print styles for journal export */
 @media print {
   body {
     background: white !important;
@@ -66,10 +57,5 @@ input[type="range"]::-webkit-slider-thumb {
   footer,
   .print\:hidden {
     display: none !important;
-  }
-
-  #journal-print article {
-    break-inside: avoid;
-    border-color: #ddd !important;
   }
 }

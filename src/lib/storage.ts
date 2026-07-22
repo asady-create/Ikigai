@@ -1,51 +1,96 @@
 /**
- * Local-storage persistence layer — privacy-first, no backend.
- * All app data lives in the browser under a single namespaced key.
+ * localStorage persistence — private, browser-only.
  */
 
-import type {
-  AppData,
-  Goal,
-  InsightResult,
-  PurposeCanvas,
-  ReflectionEntry,
-  StreakData,
-} from "./types";
+import type { AppData, Note, PurposeMap } from "./types";
+import { createEmptyMap } from "./synthesis";
 
-const STORAGE_KEY = "ikigai:v1";
-
-const DEFAULT_STREAK: StreakData = {
-  currentStreak: 0,
-  longestStreak: 0,
-  lastReflectionDate: null,
-  totalReflections: 0,
-};
+const STORAGE_KEY = "ikigai:v2";
+const LEGACY_KEY = "ikigai:v1";
 
 const DEFAULT_DATA: AppData = {
-  reflections: [],
-  goals: [],
-  canvas: null,
-  streak: DEFAULT_STREAK,
-  insights: null,
+  map: null,
+  notes: [],
 };
 
 function isBrowser() {
   return typeof window !== "undefined";
 }
 
-/** Read full app state from localStorage. */
+/** Migrate old canvas shape into PurposeMap if present. */
+function migrateLegacy(): AppData | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = window.localStorage.getItem(LEGACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      canvas?: {
+        ikigai?: {
+          love?: string;
+          goodAt?: string;
+          worldNeeds?: string;
+          paidFor?: string;
+        };
+        visionStatement?: string;
+      };
+      reflections?: { id: string; content: string; createdAt: string; updatedAt: string }[];
+    };
+
+    const map = createEmptyMap();
+    const ik = parsed.canvas?.ikigai;
+    if (ik) {
+      map.want = ik.love ?? "";
+      map.offer = ik.worldNeeds ?? "";
+      map.need = ik.worldNeeds ?? "";
+      map.reward = ik.paidFor ?? "";
+      if (ik.goodAt?.trim()) {
+        map.skillsHave = ik.goodAt
+          .split(/[,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((name, i) => ({
+            id: `migrated-have-${i}`,
+            name,
+            note: "",
+          }));
+      }
+      map.synthesis = parsed.canvas?.visionStatement ?? "";
+    }
+
+    const notes: Note[] = (parsed.reflections ?? [])
+      .filter((r) => r.content?.trim())
+      .map((r) => ({
+        id: r.id,
+        content: r.content,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }));
+
+    const data: AppData = {
+      map: parsed.canvas ? map : null,
+      notes,
+    };
+    saveAppData(data);
+    window.localStorage.removeItem(LEGACY_KEY);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export function loadAppData(): AppData {
   if (!isBrowser()) return structuredClone(DEFAULT_DATA);
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_DATA);
+    if (!raw) {
+      return migrateLegacy() ?? structuredClone(DEFAULT_DATA);
+    }
     const parsed = JSON.parse(raw) as Partial<AppData>;
     return {
       ...structuredClone(DEFAULT_DATA),
       ...parsed,
-      streak: { ...DEFAULT_STREAK, ...parsed.streak },
-      reflections: parsed.reflections ?? [],
-      goals: parsed.goals ?? [],
+      map: parsed.map ?? null,
+      notes: parsed.notes ?? [],
     };
   } catch {
     console.warn("[ikigai] Failed to parse localStorage — resetting.");
@@ -53,146 +98,92 @@ export function loadAppData(): AppData {
   }
 }
 
-/** Persist full app state. */
 export function saveAppData(data: AppData): void {
   if (!isBrowser()) return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-/** Calendar date key YYYY-MM-DD in local time. */
-function dateKey(d = new Date()): string {
-  return d.toISOString().slice(0, 10);
+export function getMap(): PurposeMap | null {
+  return loadAppData().map;
 }
 
-function yesterdayKey(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return dateKey(d);
+export function saveMap(map: PurposeMap): AppData {
+  const data = loadAppData();
+  data.map = { ...map, updatedAt: new Date().toISOString() };
+  saveAppData(data);
+  return data;
 }
 
-/** Update streak after a new reflection. */
-export function computeStreak(
-  streak: StreakData,
-  reflectionDate = new Date()
-): StreakData {
-  const today = dateKey(reflectionDate);
-  const last = streak.lastReflectionDate;
-
-  let currentStreak = streak.currentStreak;
-  if (last === today) {
-    // Already counted today — keep streak.
-  } else if (last === yesterdayKey() || last === dateKey(new Date(reflectionDate.getTime() - 86_400_000))) {
-    currentStreak = streak.currentStreak + 1;
-  } else {
-    currentStreak = 1;
-  }
-
-  return {
-    currentStreak,
-    longestStreak: Math.max(streak.longestStreak, currentStreak),
-    lastReflectionDate: today,
-    totalReflections: streak.totalReflections + 1,
-  };
-}
-
-// ── Reflection helpers ─────────────────────────────────────
-
-export function getReflections(): ReflectionEntry[] {
-  return loadAppData().reflections.sort(
+export function getNotes(): Note[] {
+  return loadAppData().notes.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
 
-export function saveReflection(entry: ReflectionEntry): AppData {
+export function saveNote(note: Note): AppData {
   const data = loadAppData();
-  const idx = data.reflections.findIndex((r) => r.id === entry.id);
-  const isNew = idx === -1;
-
-  if (isNew) {
-    data.reflections.push(entry);
-    data.streak = computeStreak(data.streak, new Date(entry.createdAt));
-  } else {
-    data.reflections[idx] = entry;
-  }
-
+  const idx = data.notes.findIndex((n) => n.id === note.id);
+  if (idx === -1) data.notes.push(note);
+  else data.notes[idx] = note;
   saveAppData(data);
   return data;
 }
 
-export function deleteReflection(id: string): AppData {
+export function deleteNote(id: string): AppData {
   const data = loadAppData();
-  data.reflections = data.reflections.filter((r) => r.id !== id);
+  data.notes = data.notes.filter((n) => n.id !== id);
   saveAppData(data);
   return data;
 }
 
-export function getStreak(): StreakData {
-  return loadAppData().streak;
-}
-
-export function saveInsights(insights: InsightResult): AppData {
-  const data = loadAppData();
-  data.insights = insights;
-  saveAppData(data);
-  return data;
-}
-
-export function getInsights(): InsightResult | null {
-  return loadAppData().insights;
-}
-
-// ── Goals / Canvas stubs (ready for later pages) ───────────
-
-export function getGoals(): Goal[] {
-  return loadAppData().goals;
-}
-
-export function saveGoals(goals: Goal[]): void {
-  const data = loadAppData();
-  data.goals = goals;
-  saveAppData(data);
-}
-
-export function getCanvas(): PurposeCanvas | null {
-  return loadAppData().canvas;
-}
-
-export function saveCanvas(canvas: PurposeCanvas): void {
-  const data = loadAppData();
-  data.canvas = canvas;
-  saveAppData(data);
-}
-
-/** Export all reflections as Markdown. */
-export function exportReflectionsMarkdown(): string {
-  const reflections = getReflections();
+export function exportMapMarkdown(): string {
+  const { map, notes } = loadAppData();
   const lines = [
-    "# Ikigai Journal",
+    "# Ikigai 2.0",
     "",
     `_Exported ${new Date().toLocaleString()}_`,
     "",
-    "---",
-    "",
   ];
 
-  for (const r of reflections) {
-    lines.push(`## ${r.promptText}`);
-    lines.push("");
-    lines.push(`*${new Date(r.createdAt).toLocaleString()} · Theme: ${r.theme} · Energy ${r.energy}/10 · Clarity ${r.clarity}/10*`);
-    lines.push("");
-    lines.push(r.content || "_(empty)_");
-    lines.push("");
-    lines.push("---");
-    lines.push("");
+  if (map) {
+    lines.push("## What I want", "", map.want || "—", "");
+    lines.push("## What I will deliver", "", map.offer || "—", "");
+    lines.push("## Who needs it", "", map.need || "—", "");
+    lines.push("## How I want to be rewarded", "", map.reward || "—", "");
+    lines.push("## Skills I have", "");
+    if (map.skillsHave.length === 0) lines.push("—", "");
+    else {
+      for (const s of map.skillsHave) {
+        lines.push(`- ${s.name}${s.note ? ` — ${s.note}` : ""}`);
+      }
+      lines.push("");
+    }
+    lines.push("## Skills I lack", "");
+    if (map.skillsLack.length === 0) lines.push("—", "");
+    else {
+      for (const s of map.skillsLack) {
+        lines.push(`- ${s.name}${s.note ? ` — ${s.note}` : ""}`);
+      }
+      lines.push("");
+    }
+    if (map.synthesis.trim()) {
+      lines.push("## Synthesis", "", map.synthesis, "");
+    }
+  }
+
+  if (notes.length > 0) {
+    lines.push("## Notes", "");
+    for (const n of notes) {
+      lines.push(`### ${new Date(n.createdAt).toLocaleString()}`, "", n.content, "");
+    }
   }
 
   return lines.join("\n");
 }
 
-/** Trigger a browser download of Markdown journal. */
-export function downloadMarkdown(filename = "ikigai-journal.md"): void {
+export function downloadMarkdown(filename = "ikigai.md"): void {
   if (!isBrowser()) return;
-  const md = exportReflectionsMarkdown();
+  const md = exportMapMarkdown();
   const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -202,14 +193,8 @@ export function downloadMarkdown(filename = "ikigai-journal.md"): void {
   URL.revokeObjectURL(url);
 }
 
-/** Print-friendly PDF via browser print dialog. */
-export function exportPdfViaPrint(): void {
-  if (!isBrowser()) return;
-  window.print();
-}
-
-/** Clear all local data — use carefully. */
 export function resetAllData(): void {
   if (!isBrowser()) return;
   window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(LEGACY_KEY);
 }

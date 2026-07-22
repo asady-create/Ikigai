@@ -8,30 +8,22 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  AppData,
-  InsightResult,
-  PurposeCanvas,
-  ReflectionEntry,
-} from "@/lib/types";
+import type { AppData, Note, PurposeMap } from "@/lib/types";
 import {
-  deleteReflection as storageDelete,
-  getInsights,
+  deleteNote as storageDeleteNote,
   loadAppData,
-  saveCanvas as storageSaveCanvas,
-  saveInsights as storageSaveInsights,
-  saveReflection as storageSave,
+  saveMap as storageSaveMap,
+  saveNote as storageSaveNote,
 } from "@/lib/storage";
 
 interface IkigaiStore {
   ready: boolean;
   data: AppData;
-  reflections: ReflectionEntry[];
+  notes: Note[];
   refresh: () => void;
-  upsertReflection: (entry: ReflectionEntry) => void;
-  removeReflection: (id: string) => void;
-  setInsights: (insights: InsightResult) => void;
-  upsertCanvas: (canvas: PurposeCanvas) => void;
+  upsertMap: (map: PurposeMap) => void;
+  upsertNote: (note: Note) => void;
+  removeNote: (id: string) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -49,27 +41,22 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
-  const upsertReflection = useCallback((entry: ReflectionEntry) => {
-    const next = storageSave(entry);
+  const upsertMap = useCallback((map: PurposeMap) => {
+    const next = storageSaveMap(map);
     setData({ ...next });
   }, []);
 
-  const removeReflection = useCallback((id: string) => {
-    const next = storageDelete(id);
+  const upsertNote = useCallback((note: Note) => {
+    const next = storageSaveNote(note);
     setData({ ...next });
   }, []);
 
-  const setInsights = useCallback((insights: InsightResult) => {
-    const next = storageSaveInsights(insights);
+  const removeNote = useCallback((id: string) => {
+    const next = storageDeleteNote(id);
     setData({ ...next });
   }, []);
 
-  const upsertCanvas = useCallback((canvas: PurposeCanvas) => {
-    storageSaveCanvas(canvas);
-    setData(loadAppData());
-  }, []);
-
-  const reflections = [...data.reflections].sort(
+  const notes = [...data.notes].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
@@ -78,12 +65,11 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
       value={{
         ready,
         data,
-        reflections,
+        notes,
         refresh,
-        upsertReflection,
-        removeReflection,
-        setInsights,
-        upsertCanvas,
+        upsertMap,
+        upsertNote,
+        removeNote,
       }}
     >
       {children}
@@ -95,10 +81,4 @@ export function useIkigai() {
   const ctx = useContext(IkigaiContext);
   if (!ctx) throw new Error("useIkigai must be used within IkigaiProvider");
   return ctx;
-}
-
-/** Safe insights read when provider may not matter. */
-export function useLatestInsights() {
-  const { data, ready } = useIkigai();
-  return { insights: ready ? data.insights ?? getInsights() : null, ready };
 }

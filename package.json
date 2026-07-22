@@ -41,5 +41,5 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "description": "Personal purpose-discovery and reflection tool inspired by Marc Andreessen’s philosophy"
+  "description": "Ikigai 2.0 — private purpose map: want, skills, reward, offer"
 }
