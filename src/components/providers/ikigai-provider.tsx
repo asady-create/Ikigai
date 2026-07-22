@@ -8,10 +8,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AppData, Note, PurposeMap } from "@/lib/types";
+import type { AppData, InsightIdea, Note, PurposeMap } from "@/lib/types";
 import {
   deleteNote as storageDeleteNote,
   loadAppData,
+  saveInsights as storageSaveInsights,
   saveMap as storageSaveMap,
   saveNote as storageSaveNote,
 } from "@/lib/storage";
@@ -20,10 +21,12 @@ interface IkigaiStore {
   ready: boolean;
   data: AppData;
   notes: Note[];
+  insights: InsightIdea[];
   refresh: () => void;
   upsertMap: (map: PurposeMap) => void;
   upsertNote: (note: Note) => void;
   removeNote: (id: string) => void;
+  setInsights: (insights: InsightIdea[]) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -56,7 +59,16 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setData({ ...next });
   }, []);
 
+  const setInsights = useCallback((insights: InsightIdea[]) => {
+    const next = storageSaveInsights(insights);
+    setData({ ...next });
+  }, []);
+
   const notes = [...data.notes].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const insights = [...(data.insights ?? [])].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
@@ -66,10 +78,12 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         ready,
         data,
         notes,
+        insights,
         refresh,
         upsertMap,
         upsertNote,
         removeNote,
+        setInsights,
       }}
     >
       {children}

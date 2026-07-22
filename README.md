@@ -1,6 +1,6 @@
 # Ikigai 2.0
 
-Private purpose map. Four questions + skill gap. Data stays in your browser.
+Private purpose map. Data stays in your browser.
 
 ## What it does
 
@@ -8,8 +8,10 @@ Private purpose map. Four questions + skill gap. Data stays in your browser.
 2. **What I deliver** — what others would own or use
 3. **Who needs it** — demand
 4. **How I’m rewarded** — the exchange you want
-5. **Skills** — have vs lack
-6. **Synthesis** — plain summary of the above
+5. **Skills** — have vs lack (editable)
+6. **Insights** — connection overlaps + 3–5 ideas (auto or manual)
+7. **Notes** — mini journal with map tags, search, date filter
+8. **Synthesis** — plain summary of the map
 
 ## Stack
 
@@ -30,10 +32,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Overview + progress + gaps |
+| `/` | Overview + ikigai diagram + progress |
 | `/map` | Four questions + synthesis |
 | `/skills` | Skills you have / lack |
-| `/notes` | Quick freeform notes |
+| `/insights` | Connection view + ideas |
+| `/notes` | Tagged mini journal |
 
 ## Scripts
 

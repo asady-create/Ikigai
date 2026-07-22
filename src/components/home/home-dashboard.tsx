@@ -54,11 +54,12 @@ const SECTIONS = [
 ];
 
 export function HomeDashboard() {
-  const { ready, data } = useIkigai();
+  const { ready, data, insights } = useIkigai();
   const map = data.map;
   const progress = mapProgress(map);
   const pct = Math.round((progress.filled / progress.total) * 100);
   const next = SECTIONS.find((s) => !progress[s.key]);
+  const topIdeas = insights.slice(0, 3);
 
   if (!ready) {
     return (
@@ -205,6 +206,37 @@ export function HomeDashboard() {
           </Button>
         </motion.section>
       )}
+
+      <section>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+            Insights
+          </h2>
+          <Button asChild variant="ghost" className="h-auto px-0 py-0 text-sm">
+            <Link href="/insights">
+              Connection view
+              <ArrowRight />
+            </Link>
+          </Button>
+        </div>
+        {topIdeas.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {topIdeas.map((idea) => (
+              <li
+                key={idea.id}
+                className="border-l-2 border-[var(--border)] pl-3 text-sm leading-relaxed text-[var(--foreground)]"
+              >
+                {idea.text}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            Overlaps like Want + Need → purpose areas. Generate or add ideas on
+            Insights.
+          </p>
+        )}
+      </section>
 
       {map && map.skillsLack.some((s) => s.name.trim()) && (
         <section>

@@ -1,6 +1,5 @@
 /**
  * Ikigai 2.0 — personal purpose map.
- * Four questions + skill gap. Nothing else.
  */
 
 export interface Skill {
@@ -26,14 +25,46 @@ export interface PurposeMap {
   updatedAt: string;
 }
 
+/** Map-linked tags for notes. */
+export const NOTE_TAGS = [
+  "Want",
+  "Offer",
+  "Need",
+  "Reward",
+  "Have",
+  "Gap",
+  "Idea",
+] as const;
+
+export type NoteTag = (typeof NOTE_TAGS)[number];
+
 export interface Note {
   id: string;
   content: string;
+  tags: NoteTag[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** Overlap pairs shown in Insights / Connection View. */
+export type InsightConnectionId =
+  | "want-need"
+  | "offer-need"
+  | "offer-reward"
+  | "have-need"
+  | "want-gap";
+
+export interface InsightIdea {
+  id: string;
+  /** Which overlap this idea belongs to. */
+  connectionId: InsightConnectionId;
+  text: string;
+  source: "auto" | "manual";
+  createdAt: string;
 }
 
 export interface AppData {
   map: PurposeMap | null;
   notes: Note[];
+  insights: InsightIdea[];
 }
