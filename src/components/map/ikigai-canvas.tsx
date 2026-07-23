@@ -83,20 +83,15 @@ function DiagramBackdrop({ active }: { active: CircleId | "center" | null }) {
       <circle
         cx="200"
         cy="200"
-        r="36"
+        r="48"
         fill={
-          active === "center" ? "rgba(13, 92, 99, 0.95)" : "rgba(13, 92, 99, 0.82)"
+          active === "center"
+            ? "rgba(13, 92, 99, 0.22)"
+            : "rgba(13, 92, 99, 0.12)"
         }
+        stroke="rgba(13, 92, 99, 0.35)"
+        strokeWidth="1.25"
       />
-      <text
-        x="200"
-        y="205"
-        textAnchor="middle"
-        fill="#fff"
-        style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.06em" }}
-      >
-        生き甲斐
-      </text>
     </svg>
   );
 }
@@ -219,8 +214,16 @@ export function IkigaiCanvas({ map, onChange, onBlurSave }: IkigaiCanvasProps) {
           );
         })}
 
-        {/* Center — offer / deliver */}
-        <div className="absolute top-1/2 left-1/2 z-20 w-[34%] max-w-[11rem] -translate-x-1/2 -translate-y-1/2 sm:w-[32%] sm:max-w-[12rem]">
+        {/* Center — offer / deliver (typeable) */}
+        <div className="absolute top-1/2 left-1/2 z-20 flex w-[42%] max-w-[15rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:w-[38%] sm:max-w-[16rem]">
+          <span
+            className={cn(
+              "mb-1 rounded-full px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-white uppercase sm:text-[10px]",
+              "bg-[var(--accent)]/90"
+            )}
+          >
+            生き甲斐 · Deliver
+          </span>
           <textarea
             id="circle-center"
             value={map.offer}
@@ -232,37 +235,52 @@ export function IkigaiCanvas({ map, onChange, onBlurSave }: IkigaiCanvasProps) {
             }}
             placeholder={CENTER_PROMPT.placeholder}
             aria-label={CENTER_PROMPT.label}
+            rows={4}
             className={cn(
-              "h-20 w-full resize-none rounded-full border px-3 py-2 text-center text-[10px] leading-snug sm:h-24 sm:text-xs sm:leading-relaxed",
-              "bg-white/90 text-[var(--foreground)] shadow-md backdrop-blur-sm",
-              "placeholder:text-[var(--muted)]/50",
+              "min-h-[5.5rem] w-full resize-none rounded-2xl border px-3 py-2.5 text-center text-xs leading-snug sm:min-h-[6.5rem] sm:text-sm sm:leading-relaxed",
+              "bg-white/95 text-[var(--foreground)] shadow-md backdrop-blur-sm",
+              "placeholder:text-[var(--muted)]/45",
               "focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40",
               active === "center"
                 ? "border-[var(--accent)]"
-                : "border-[var(--accent)]/30"
+                : "border-[var(--accent)]/35"
             )}
           />
         </div>
       </div>
 
-      {/* Mobile helper: full-width focus editor when a circle is active */}
+      {/* Expanded editor when a zone (or center) is active — easier typing */}
       <AnimatePresence>
-        {activePrompt && (
+        {(activePrompt || active === "center") && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden md:hidden"
+            className="overflow-hidden"
           >
             <p className="mb-2 text-xs text-[var(--muted)]">
-              Expanded editor for this circle:
+              {active === "center"
+                ? "Expanded — what you deliver (center)"
+                : `Expanded — ${activePrompt?.label}`}
             </p>
             <textarea
-              value={map[activePrompt.field]}
-              onChange={(e) => onChange(activePrompt.field, e.target.value)}
+              value={
+                active === "center" ? map.offer : map[activePrompt!.field]
+              }
+              onChange={(e) =>
+                onChange(
+                  active === "center" ? "offer" : activePrompt!.field,
+                  e.target.value
+                )
+              }
               onBlur={() => onBlurSave?.()}
-              placeholder={activePrompt.placeholder}
-              className="min-h-[100px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
+              placeholder={
+                active === "center"
+                  ? CENTER_PROMPT.placeholder
+                  : activePrompt!.placeholder
+              }
+              className="min-h-[120px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm leading-relaxed"
+              autoFocus={false}
             />
           </motion.div>
         )}

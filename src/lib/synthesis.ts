@@ -32,6 +32,9 @@ export function generateSynthesis(map: PurposeMap): string {
   if (offer) parts.push(`I will deliver: ${offer}.`);
   if (have) parts.push(`Skills I have: ${have}.`);
   if (lack) parts.push(`Skills I still need: ${lack}.`);
+  if (map.values.length > 0) {
+    parts.push(`Values: ${map.values.join(", ")}.`);
+  }
 
   if (parts.length === 0) return "";
   return parts.join(" ");
@@ -44,6 +47,7 @@ export function mapProgress(map: PurposeMap | null): {
   need: boolean;
   reward: boolean;
   offer: boolean;
+  values: boolean;
   skillsHave: boolean;
   skillsLack: boolean;
   filled: number;
@@ -55,10 +59,11 @@ export function mapProgress(map: PurposeMap | null): {
     need: false,
     reward: false,
     offer: false,
+    values: false,
     skillsHave: false,
     skillsLack: false,
     filled: 0,
-    total: 7,
+    total: 8,
   };
   if (!map) return empty;
 
@@ -67,6 +72,7 @@ export function mapProgress(map: PurposeMap | null): {
   const need = Boolean(clean(map.need));
   const reward = Boolean(clean(map.reward));
   const offer = Boolean(clean(map.offer));
+  const values = (map.values ?? []).some((v) => v.trim());
   const skillsHave = map.skillsHave.some((s) => s.name.trim());
   const skillsLack = map.skillsLack.some((s) => s.name.trim());
   const flags = {
@@ -75,12 +81,13 @@ export function mapProgress(map: PurposeMap | null): {
     need,
     reward,
     offer,
+    values,
     skillsHave,
     skillsLack,
   };
   const filled = Object.values(flags).filter(Boolean).length;
 
-  return { ...flags, filled, total: 7 };
+  return { ...flags, filled, total: 8 };
 }
 
 export function createEmptyMap(): PurposeMap {
@@ -92,12 +99,13 @@ export function createEmptyMap(): PurposeMap {
     need: "",
     skillsHave: [],
     skillsLack: [],
+    values: [],
     synthesis: "",
     updatedAt: new Date().toISOString(),
   };
 }
 
-/** Normalize older maps missing goodAt. */
+/** Normalize older maps missing fields. */
 export function normalizeMap(raw: Partial<PurposeMap> | null): PurposeMap {
   const base = createEmptyMap();
   if (!raw) return base;
@@ -107,5 +115,6 @@ export function normalizeMap(raw: Partial<PurposeMap> | null): PurposeMap {
     goodAt: raw.goodAt ?? "",
     skillsHave: raw.skillsHave ?? [],
     skillsLack: raw.skillsLack ?? [],
+    values: raw.values ?? [],
   };
 }

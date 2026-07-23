@@ -12,6 +12,8 @@ const HASHTAG_MAP: Record<string, NoteTag> = {
   lack: "Gap",
   idea: "Idea",
   ideas: "Idea",
+  value: "Value",
+  values: "Value",
 };
 
 const KEYWORD_RULES: { tag: NoteTag; pattern: RegExp }[] = [
@@ -22,6 +24,7 @@ const KEYWORD_RULES: { tag: NoteTag; pattern: RegExp }[] = [
   { tag: "Have", pattern: /\b(i (already )?have|skilled at|good at)\b/i },
   { tag: "Gap", pattern: /\b(lack|gap|need to learn|missing skill)\b/i },
   { tag: "Idea", pattern: /\b(idea|hypothesis|what if|maybe)\b/i },
+  { tag: "Value", pattern: /\b(value|principle|non-negotiable|integrity)\b/i },
 ];
 
 /** Parse #Want-style hashtags from note body. */

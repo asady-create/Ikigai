@@ -95,18 +95,13 @@ function SkillColumn({
             </div>
 
             {/* Note — nested under this skill */}
-            <div className="mt-3 ml-1 border-l-2 border-[var(--border)] pl-3">
-              <label
-                htmlFor={`skill-note-${skill.id}`}
-                className="mb-1 block text-[10px] font-semibold tracking-[0.14em] text-[var(--muted)] uppercase"
-              >
-                Note for this skill
-              </label>
+            <div className="mt-2.5 ml-1 border-l-2 border-[var(--border)] pl-3">
               <Textarea
                 id={`skill-note-${skill.id}`}
                 value={skill.note}
                 onChange={(e) => onNote(skill.id, e.target.value)}
-                placeholder="Level, proof, why it matters… Shift+Enter for a new line"
+                aria-label={`Note for ${skill.name || "skill"}`}
+                placeholder="Level, proof, why it matters…"
                 rows={2}
                 className="min-h-[64px] resize-y border-[var(--border)] bg-[var(--background)]/70 px-2.5 py-2 text-xs leading-relaxed text-[var(--muted)] placeholder:text-[var(--muted)]/50 focus:text-[var(--foreground)]"
               />

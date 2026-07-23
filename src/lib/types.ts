@@ -22,6 +22,8 @@ export interface PurposeMap {
   offer: string;
   skillsHave: Skill[];
   skillsLack: Skill[];
+  /** Non-negotiable values that guide choices. */
+  values: string[];
   /** Plain synthesis of the above. Editable. */
   synthesis: string;
   updatedAt: string;
@@ -36,6 +38,7 @@ export const NOTE_TAGS = [
   "Have",
   "Gap",
   "Idea",
+  "Value",
 ] as const;
 
 export type NoteTag = (typeof NOTE_TAGS)[number];

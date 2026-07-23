@@ -46,6 +46,12 @@ const SECTIONS = [
     hint: "Center / 生き甲斐",
   },
   {
+    key: "values" as const,
+    label: "Values",
+    href: "/map#values",
+    hint: "Non-negotiables",
+  },
+  {
     key: "skillsHave" as const,
     label: "Skills I have",
     href: "/skills",
@@ -198,6 +204,32 @@ export function HomeDashboard() {
           })}
         </ul>
       </motion.section>
+
+      {map && map.values?.length > 0 && (
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+              Values
+            </h2>
+            <Button asChild variant="ghost" className="h-auto px-0 py-0 text-sm">
+              <Link href="/map#values">
+                Edit
+                <ArrowRight />
+              </Link>
+            </Button>
+          </div>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {map.values.map((v) => (
+              <li
+                key={v}
+                className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)]"
+              >
+                {v}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {map?.synthesis?.trim() && (
         <motion.section

@@ -232,6 +232,12 @@ export function exportMapMarkdown(): string {
     lines.push("## What the world needs", "", map.need || "—", "");
     lines.push("## What you can be paid for", "", map.reward || "—", "");
     lines.push("## What I deliver", "", map.offer || "—", "");
+    lines.push("## Values", "");
+    if (!map.values?.length) lines.push("—", "");
+    else {
+      for (const v of map.values) lines.push(`- ${v}`);
+      lines.push("");
+    }
     lines.push("## Skills I have", "");
     if (map.skillsHave.length === 0) lines.push("—", "");
     else {
