@@ -8,7 +8,7 @@ import type { PurposeMap, Skill } from "@/lib/types";
 import { createEmptyMap, normalizeMap } from "@/lib/synthesis";
 import { useIkigai } from "@/components/providers/ikigai-provider";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 function SkillColumn({
@@ -47,7 +47,7 @@ function SkillColumn({
         <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p>
       </div>
 
-      <ul className="space-y-2">
+      <ul className="space-y-3">
         {skills.length === 0 && (
           <li className="py-2 text-sm text-[var(--muted)]">None yet.</li>
         )}
@@ -59,38 +59,58 @@ function SkillColumn({
               accent === "lack" && "border-l-2 border-l-[var(--accent)]"
             )}
           >
+            {/* Skill name — primary */}
             <div className="flex items-start gap-2">
-              <Input
-                value={skill.name}
-                onChange={(e) => onRename(skill.id, e.target.value)}
-                aria-label="Skill name"
-                placeholder="Skill name"
-                className="h-9 flex-1 border-transparent bg-transparent px-0 font-medium shadow-none focus-visible:border-[var(--border)] focus-visible:bg-[var(--background)] focus-visible:px-2 focus-visible:ring-1"
-              />
-              <button
-                type="button"
-                onClick={() => onMove(skill.id)}
-                className="shrink-0 rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
-                aria-label={moveLabel}
-                title={moveLabel}
-              >
-                <ArrowRightLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemove(skill.id)}
-                className="shrink-0 rounded p-1.5 text-[var(--muted)] transition hover:text-red-600"
-                aria-label={`Remove ${skill.name || "skill"}`}
-              >
-                <X className="size-4" />
-              </button>
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 text-[10px] font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+                  Skill
+                </p>
+                <Input
+                  value={skill.name}
+                  onChange={(e) => onRename(skill.id, e.target.value)}
+                  aria-label="Skill name"
+                  placeholder="Skill name"
+                  className="h-9 border-[var(--border)] bg-[var(--background)] font-medium"
+                />
+              </div>
+              <div className="mt-5 flex shrink-0 gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => onMove(skill.id)}
+                  className="rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+                  aria-label={moveLabel}
+                  title={moveLabel}
+                >
+                  <ArrowRightLeft className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(skill.id)}
+                  className="rounded p-1.5 text-[var(--muted)] transition hover:text-red-600"
+                  aria-label={`Remove ${skill.name || "skill"}`}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
             </div>
-            <Input
-              value={skill.note}
-              onChange={(e) => onNote(skill.id, e.target.value)}
-              placeholder="Optional note — level, proof, why it matters"
-              className="mt-1.5 h-8 border-transparent bg-transparent px-0 text-xs shadow-none focus-visible:border-[var(--border)] focus-visible:bg-[var(--background)] focus-visible:px-2 focus-visible:ring-1"
-            />
+
+            {/* Note — nested under this skill */}
+            <div className="mt-3 ml-1 border-l-2 border-[var(--border)] pl-3">
+              <label
+                htmlFor={`skill-note-${skill.id}`}
+                className="mb-1 block text-[10px] font-semibold tracking-[0.14em] text-[var(--muted)] uppercase"
+              >
+                Note for this skill
+              </label>
+              <Textarea
+                id={`skill-note-${skill.id}`}
+                value={skill.note}
+                onChange={(e) => onNote(skill.id, e.target.value)}
+                placeholder="Level, proof, why it matters… Shift+Enter for a new line"
+                rows={2}
+                className="min-h-[64px] resize-y border-[var(--border)] bg-[var(--background)]/70 px-2.5 py-2 text-xs leading-relaxed text-[var(--muted)] placeholder:text-[var(--muted)]/50 focus:text-[var(--foreground)]"
+              />
+            </div>
           </li>
         ))}
       </ul>
@@ -228,8 +248,9 @@ export function SkillsPage() {
             Have vs lack
           </h1>
           <p className="mt-2 max-w-md text-sm text-[var(--muted)]">
-            Classic ikigai: what you’re good at. Edit names and notes inline.
-            Move a skill between columns if it changes.
+            Each skill has its own note underneath. Use Shift+Enter (or Enter)
+            for a new line in the note. Move a skill between columns if it
+            changes.
           </p>
         </div>
         <span
