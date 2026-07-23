@@ -149,6 +149,7 @@ export function SkillsPage() {
 
   const persist = useCallback(
     (next: PurposeMap) => {
+      if (!hydrated.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         upsertMap({ ...next, updatedAt: new Date().toISOString() });

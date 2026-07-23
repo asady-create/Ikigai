@@ -34,6 +34,7 @@ export function PurposeMapPage() {
 
   const persist = useCallback(
     (next: PurposeMap, immediate = false) => {
+      if (!hydrated.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const write = () => {
         upsertMap({ ...next, updatedAt: new Date().toISOString() });

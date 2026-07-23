@@ -19,6 +19,8 @@ import {
   saveNote as storageSaveNote,
 } from "@/lib/storage";
 
+const EMPTY: AppData = { map: null, notes: [], insights: [] };
+
 interface IkigaiStore {
   ready: boolean;
   data: AppData;
@@ -34,9 +36,12 @@ interface IkigaiStore {
 const IkigaiContext = createContext<IkigaiStore | null>(null);
 
 export function IkigaiProvider({ children }: { children: ReactNode }) {
+  // Start empty; load only on the client after mount — avoids SSR empty
+  // state being flushed over real localStorage data.
   const [ready, setReady] = useState(false);
-  const [data, setData] = useState<AppData>(() => loadAppData());
+  const [data, setData] = useState<AppData>(EMPTY);
   const dataRef = useRef(data);
+  const readyRef = useRef(false);
   dataRef.current = data;
 
   const refresh = useCallback(() => {
@@ -44,41 +49,52 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setData(loadAppData());
+    const loaded = loadAppData();
+    setData(loaded);
+    readyRef.current = true;
     setReady(true);
   }, []);
 
-  // Flush to storage if the tab closes / refreshes
+  // Flush only after hydration, and never flush empty payloads
   useEffect(() => {
-    const flush = () => flushAppData(dataRef.current);
+    const flush = () => {
+      if (!readyRef.current) return;
+      flushAppData(dataRef.current);
+    };
     window.addEventListener("beforeunload", flush);
     window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", () => {
+    const onVis = () => {
       if (document.visibilityState === "hidden") flush();
-    });
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
       flush();
     };
   }, []);
 
   const upsertMap = useCallback((map: PurposeMap) => {
+    if (!readyRef.current) return;
     const next = storageSaveMap(map);
     setData({ ...next });
   }, []);
 
   const upsertNote = useCallback((note: Note) => {
+    if (!readyRef.current) return;
     const next = storageSaveNote(note);
     setData({ ...next });
   }, []);
 
   const removeNote = useCallback((id: string) => {
+    if (!readyRef.current) return;
     const next = storageDeleteNote(id);
     setData({ ...next });
   }, []);
 
   const setInsights = useCallback((insights: InsightIdea[]) => {
+    if (!readyRef.current) return;
     const next = storageSaveInsights(insights);
     setData({ ...next });
   }, []);

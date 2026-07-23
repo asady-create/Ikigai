@@ -1,7 +1,10 @@
 /**
  * localStorage persistence — private, browser-only.
- * Dual-writes a sessionStorage backup so a flaky write is recoverable
- * in the same browser session.
+ *
+ * Safety rules:
+ * - Never overwrite non-empty saved data with an empty payload
+ *   (guards against React Strict Mode / SSR hydration races).
+ * - Keep a durable snapshot of the last non-empty state for recovery.
  */
 
 import type {
@@ -17,6 +20,7 @@ import { isNoteTag } from "./note-tags";
 import { normalizeInsights } from "./insights";
 
 const STORAGE_KEY = "ikigai:v2";
+const SNAPSHOT_KEY = "ikigai:v2:snapshot";
 const BACKUP_KEY = "ikigai:v2:backup";
 const LEGACY_KEY = "ikigai:v1";
 
@@ -58,6 +62,39 @@ function parsePayload(raw: string): AppData | null {
   } catch {
     return null;
   }
+}
+
+/** How much real content is in this payload — used to block empty overwrites. */
+export function contentScore(data: AppData): number {
+  let score = 0;
+  const m = data.map;
+  if (m) {
+    for (const s of [
+      m.want,
+      m.goodAt,
+      m.need,
+      m.reward,
+      m.offer,
+      m.synthesis,
+    ]) {
+      if (s?.trim()) score += Math.min(s.trim().length, 200);
+    }
+    score += m.skillsHave.length * 20;
+    score += m.skillsLack.length * 20;
+    score += (m.values?.length ?? 0) * 10;
+    for (const sk of [...m.skillsHave, ...m.skillsLack]) {
+      if (sk.note?.trim()) score += Math.min(sk.note.trim().length, 80);
+    }
+  }
+  for (const n of data.notes) {
+    if (n.content?.trim()) score += Math.min(n.content.trim().length, 200);
+  }
+  score += data.insights.length * 15;
+  return score;
+}
+
+export function isEffectivelyEmpty(data: AppData): boolean {
+  return contentScore(data) === 0;
 }
 
 function migrateLegacy(): AppData | null {
@@ -122,9 +159,20 @@ function migrateLegacy(): AppData | null {
       notes,
       insights: [],
     };
-    saveAppData(data);
+    saveAppData(data, { force: true });
     window.localStorage.removeItem(LEGACY_KEY);
     return data;
+  } catch {
+    return null;
+  }
+}
+
+function readKey(key: string): AppData | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return parsePayload(raw);
   } catch {
     return null;
   }
@@ -133,19 +181,30 @@ function migrateLegacy(): AppData | null {
 export function loadAppData(): AppData {
   if (!isBrowser()) return structuredClone(DEFAULT_DATA);
 
-  const primary = window.localStorage.getItem(STORAGE_KEY);
-  if (primary) {
-    const parsed = parsePayload(primary);
-    if (parsed) return parsed;
-  }
+  const primary = readKey(STORAGE_KEY);
+  const snapshot = readKey(SNAPSHOT_KEY);
 
-  // Same-session backup if localStorage was cleared mid-session
+  // Prefer whichever copy has more content (recovers from empty overwrites)
+  if (primary && snapshot) {
+    if (contentScore(snapshot) > contentScore(primary)) {
+      saveAppData(snapshot, { force: true });
+      return snapshot;
+    }
+    return primary;
+  }
+  if (primary && !isEffectivelyEmpty(primary)) return primary;
+  if (snapshot && !isEffectivelyEmpty(snapshot)) {
+    saveAppData(snapshot, { force: true });
+    return snapshot;
+  }
+  if (primary) return primary;
+
   try {
     const backup = window.sessionStorage.getItem(BACKUP_KEY);
     if (backup) {
       const parsed = parsePayload(backup);
-      if (parsed) {
-        saveAppData(parsed);
+      if (parsed && !isEffectivelyEmpty(parsed)) {
+        saveAppData(parsed, { force: true });
         return parsed;
       }
     }
@@ -156,14 +215,42 @@ export function loadAppData(): AppData {
   return migrateLegacy() ?? structuredClone(DEFAULT_DATA);
 }
 
-export function saveAppData(data: AppData): void {
+export function saveAppData(
+  data: AppData,
+  opts: { force?: boolean } = {}
+): void {
   if (!isBrowser()) return;
+
+  if (!opts.force) {
+    const existing = readKey(STORAGE_KEY) ?? readKey(SNAPSHOT_KEY);
+    if (
+      existing &&
+      !isEffectivelyEmpty(existing) &&
+      isEffectivelyEmpty(data)
+    ) {
+      console.warn(
+        "[ikigai] Blocked empty overwrite — your saved data was kept."
+      );
+      return;
+    }
+  }
+
   const json = JSON.stringify(data);
   try {
     window.localStorage.setItem(STORAGE_KEY, json);
   } catch (err) {
     console.warn("[ikigai] localStorage write failed", err);
   }
+
+  // Durable snapshot: only update when there is real content
+  if (!isEffectivelyEmpty(data)) {
+    try {
+      window.localStorage.setItem(SNAPSHOT_KEY, json);
+    } catch {
+      /* ignore */
+    }
+  }
+
   try {
     window.sessionStorage.setItem(BACKUP_KEY, json);
   } catch {
@@ -171,8 +258,9 @@ export function saveAppData(data: AppData): void {
   }
 }
 
-/** Immediate flush — call on blur / beforeunload. */
+/** Immediate flush — never writes empty over existing content. */
 export function flushAppData(data: AppData): void {
+  if (isEffectivelyEmpty(data)) return;
   saveAppData(data);
 }
 
@@ -299,6 +387,7 @@ export function downloadMarkdown(filename = "ikigai.md"): void {
 export function resetAllData(): void {
   if (!isBrowser()) return;
   window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(SNAPSHOT_KEY);
   window.localStorage.removeItem(LEGACY_KEY);
   try {
     window.sessionStorage.removeItem(BACKUP_KEY);
