@@ -1,58 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Check, Wand2 } from "lucide-react";
+import { ArrowRight, Check, Wand2 } from "lucide-react";
 import type { PurposeMap } from "@/lib/types";
-import { createEmptyMap, generateSynthesis } from "@/lib/synthesis";
+import {
+  createEmptyMap,
+  generateSynthesis,
+  normalizeMap,
+} from "@/lib/synthesis";
 import { useIkigai } from "@/components/providers/ikigai-provider";
+import { IkigaiCanvas } from "@/components/map/ikigai-canvas";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-const FIELDS: {
-  key: keyof Pick<PurposeMap, "want" | "offer" | "need" | "reward">;
-  id: string;
-  title: string;
-  classic: string;
-  question: string;
-  placeholder: string;
-}[] = [
-  {
-    key: "want",
-    id: "want",
-    title: "What I want",
-    classic: "What you love",
-    question:
-      "What do you want badly enough to rearrange your life for? Be specific.",
-    placeholder: "e.g. Build and own a product that helps X do Y without Z.",
-  },
-  {
-    key: "offer",
-    id: "offer",
-    title: "What I deliver",
-    classic: "Intersection — love × skill × need",
-    question:
-      "What will you build or deliver that other people would want to own or use?",
-    placeholder: "e.g. A tool, service, or body of work people would pay for.",
-  },
-  {
-    key: "need",
-    id: "need",
-    title: "Who needs it",
-    classic: "What the world needs",
-    question: "Who needs this, and why do they care enough to act?",
-    placeholder: "e.g. Freelancers who waste hours on admin every week.",
-  },
-  {
-    key: "reward",
-    id: "reward",
-    title: "How I’m rewarded",
-    classic: "What you can be paid for",
-    question: "How do you want society to reward you for delivering this?",
-    placeholder: "e.g. Recurring revenue, equity, reputation, freedom of time.",
-  },
-];
 
 export function PurposeMapPage() {
   const { ready, data, upsertMap } = useIkigai();
@@ -60,27 +22,34 @@ export function PurposeMapPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const hydrated = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapRef = useRef(map);
+  mapRef.current = map;
 
   useEffect(() => {
     if (!ready || hydrated.current) return;
-    setMap(data.map ?? createEmptyMap());
+    setMap(normalizeMap(data.map));
     hydrated.current = true;
   }, [ready, data.map]);
 
   const persist = useCallback(
-    (next: PurposeMap) => {
+    (next: PurposeMap, immediate = false) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
+      const write = () => {
         upsertMap({ ...next, updatedAt: new Date().toISOString() });
         setSavedFlash(true);
-        setTimeout(() => setSavedFlash(false), 1000);
-      }, 350);
+        setTimeout(() => setSavedFlash(false), 1200);
+      };
+      if (immediate) write();
+      else saveTimer.current = setTimeout(write, 200);
     },
     [upsertMap]
   );
 
   const updateField = (
-    key: keyof Pick<PurposeMap, "want" | "offer" | "need" | "reward" | "synthesis">,
+    key: keyof Pick<
+      PurposeMap,
+      "want" | "goodAt" | "need" | "reward" | "offer" | "synthesis"
+    >,
     value: string
   ) => {
     setMap((prev) => {
@@ -89,6 +58,8 @@ export function PurposeMapPage() {
       return next;
     });
   };
+
+  const flushNow = () => persist(mapRef.current, true);
 
   const handleGenerate = () => {
     const statement = generateSynthesis(map);
@@ -100,7 +71,7 @@ export function PurposeMapPage() {
     return (
       <div className="animate-pulse space-y-4 py-8">
         <div className="h-8 w-40 rounded bg-[var(--surface-2)]" />
-        <div className="h-40 rounded-xl bg-[var(--surface-2)]" />
+        <div className="aspect-square max-w-lg rounded-2xl bg-[var(--surface-2)]" />
       </div>
     );
   }
@@ -113,11 +84,11 @@ export function PurposeMapPage() {
             Map
           </p>
           <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--foreground)]">
-            Four questions
+            Reflect on four areas
           </h1>
-          <p className="mt-2 max-w-md text-sm text-[var(--muted)]">
-            Mapped to classic ikigai. Skills (what you’re good at) are on the
-            Skills page — edit them anytime.
+          <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
+            Type on the ikigai diagram. Each circle is one question. Your
+            answers save in this browser.
           </p>
         </div>
         <span
@@ -125,49 +96,39 @@ export function PurposeMapPage() {
             "inline-flex items-center gap-1.5 text-xs transition-opacity",
             savedFlash
               ? "text-[var(--accent)] opacity-100"
-              : "text-[var(--muted)] opacity-40"
+              : "text-[var(--muted)] opacity-50"
           )}
         >
           <Check className="size-3.5" />
-          Saved
+          Saved locally
         </span>
       </header>
 
-      <div className="space-y-8">
-        {FIELDS.map((field, i) => (
-          <motion.section
-            key={field.key}
-            id={field.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05, duration: 0.35 }}
-            className="scroll-mt-24"
-          >
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className="font-display text-xl font-semibold text-[var(--foreground)]">
-                {field.title}
-              </h2>
-              <span className="text-xs text-[var(--muted)]">
-                ← {field.classic}
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-[var(--muted)]">{field.question}</p>
-            <Textarea
-              value={map[field.key]}
-              onChange={(e) => updateField(field.key, e.target.value)}
-              placeholder={field.placeholder}
-              className="mt-4 min-h-[120px]"
-              aria-label={field.title}
-            />
-          </motion.section>
-        ))}
-      </div>
+      <IkigaiCanvas
+        map={map}
+        onChange={(field, value) => updateField(field, value)}
+        onBlurSave={flushNow}
+      />
+
+      <p className="text-center text-xs text-[var(--muted)]">
+        Skill inventory lives on{" "}
+        <Link href="/skills" className="text-[var(--accent)] hover:underline">
+          Skills
+        </Link>
+        . Overlaps open in{" "}
+        <Link
+          href="/insights"
+          className="inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+        >
+          Insights
+          <ArrowRight className="size-3" />
+        </Link>
+      </p>
 
       <motion.section
         id="synthesis"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
         className="scroll-mt-24 border-t border-[var(--border)] pt-10"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -176,19 +137,20 @@ export function PurposeMapPage() {
               Synthesis
             </h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              A plain summary of what you wrote. Edit freely.
+              A plain summary of the four circles. Edit freely.
             </p>
           </div>
           <Button variant="accent" onClick={handleGenerate}>
             <Wand2 />
-            Build from answers
+            Build from diagram
           </Button>
         </div>
         <Textarea
           value={map.synthesis}
           onChange={(e) => updateField("synthesis", e.target.value)}
-          placeholder="Fill the questions above, then build a synthesis — or write your own."
-          className="mt-5 min-h-[160px] font-display text-base leading-relaxed"
+          onBlur={flushNow}
+          placeholder="Fill the circles, then build a synthesis — or write your own."
+          className="mt-5 min-h-[140px] font-display text-base leading-relaxed"
           aria-label="Synthesis"
         />
       </motion.section>

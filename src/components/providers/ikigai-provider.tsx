@@ -5,12 +5,14 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { AppData, InsightIdea, Note, PurposeMap } from "@/lib/types";
 import {
   deleteNote as storageDeleteNote,
+  flushAppData,
   loadAppData,
   saveInsights as storageSaveInsights,
   saveMap as storageSaveMap,
@@ -34,6 +36,8 @@ const IkigaiContext = createContext<IkigaiStore | null>(null);
 export function IkigaiProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<AppData>(() => loadAppData());
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const refresh = useCallback(() => {
     setData(loadAppData());
@@ -42,6 +46,21 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setData(loadAppData());
     setReady(true);
+  }, []);
+
+  // Flush to storage if the tab closes / refreshes
+  useEffect(() => {
+    const flush = () => flushAppData(dataRef.current);
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
   }, []);
 
   const upsertMap = useCallback((map: PurposeMap) => {

@@ -2,129 +2,128 @@ import type {
   InsightConnectionId,
   InsightIdea,
   PurposeMap,
-  Skill,
 } from "./types";
 import { nanoid } from "nanoid";
+import { INTERSECTION_PROMPTS } from "./reflection-prompts";
 
 function clean(s: string): string {
   return s.replace(/\s+/g, " ").trim().replace(/[.]+$/, "");
 }
 
-function clip(s: string, max = 120): string {
+function clip(s: string, max = 100): string {
   const c = clean(s);
   if (c.length <= max) return c;
   return `${c.slice(0, max - 1).trim()}…`;
 }
 
-function skillList(skills: Skill[], max = 3): string {
-  return skills
-    .map((s) => s.name.trim())
-    .filter(Boolean)
-    .slice(0, max)
-    .join(", ");
-}
-
 export interface InsightConnection {
   id: InsightConnectionId;
-  /** e.g. "What I Want + Who Needs It" */
+  label: string;
   formula: string;
-  /** e.g. "Potential purpose areas" */
-  result: string;
-  /** True when both sides of the overlap have content. */
+  prompt: string;
   ready: (map: PurposeMap | null) => boolean;
-  /** Generate up to a few seed ideas from the map. */
   generate: (map: PurposeMap) => string[];
 }
 
+const promptById = Object.fromEntries(
+  INTERSECTION_PROMPTS.map((p) => [p.id, p])
+) as Record<InsightConnectionId, (typeof INTERSECTION_PROMPTS)[number]>;
+
 export const INSIGHT_CONNECTIONS: InsightConnection[] = [
   {
-    id: "want-need",
-    formula: "What I Want + Who Needs It",
-    result: "Potential purpose areas",
+    id: "passion",
+    label: promptById.passion.label,
+    formula: promptById.passion.formula,
+    prompt: promptById.passion.prompt,
+    ready: (m) => Boolean(m && clean(m.want) && clean(m.goodAt ?? "")),
+    generate: (m) => {
+      const love = clip(m.want);
+      const skill = clip(m.goodAt ?? "");
+      return [
+        `Passion lane: bring “${skill}” to “${love}” without waiting for permission.`,
+        `Double down where love and skill already overlap: ${love} × ${skill}.`,
+      ];
+    },
+  },
+  {
+    id: "mission",
+    label: promptById.mission.label,
+    formula: promptById.mission.formula,
+    prompt: promptById.mission.prompt,
     ready: (m) => Boolean(m && clean(m.want) && clean(m.need)),
     generate: (m) => {
-      const want = clip(m.want, 90);
-      const need = clip(m.need, 90);
+      const love = clip(m.want);
+      const need = clip(m.need);
       return [
-        `Serve “${need}” by pursuing “${want}”.`,
-        `Purpose bet: turn what you want (${want}) into relief for who needs it (${need}).`,
-        `Ask: what smallest version of “${want}” helps “${need}” this month?`,
+        `Mission: aim “${love}” at “${need}”.`,
+        `Purpose area: serve “${need}” through what you love — ${love}.`,
       ];
     },
   },
   {
-    id: "offer-need",
-    formula: "What I Deliver + Who Needs It",
-    result: "Offer fit",
-    ready: (m) => Boolean(m && clean(m.offer) && clean(m.need)),
+    id: "profession",
+    label: promptById.profession.label,
+    formula: promptById.profession.formula,
+    prompt: promptById.profession.prompt,
+    ready: (m) => Boolean(m && clean(m.goodAt ?? "") && clean(m.reward)),
     generate: (m) => {
-      const offer = clip(m.offer, 90);
-      const need = clip(m.need, 90);
+      const skill = clip(m.goodAt ?? "");
+      const reward = clip(m.reward);
       return [
-        `Package “${offer}” for “${need}”.`,
-        `Validate: would “${need}” choose “${offer}” over doing nothing?`,
-        `Narrow the offer until one clear user in “${need}” would use it weekly.`,
+        `Profession: trade “${skill}” for “${reward}”.`,
+        `Proven exchange: ${skill} → ${reward}.`,
       ];
     },
   },
   {
-    id: "offer-reward",
-    formula: "What I Deliver + How I’m Rewarded",
-    result: "Viable exchange",
-    ready: (m) => Boolean(m && clean(m.offer) && clean(m.reward)),
+    id: "vocation",
+    label: promptById.vocation.label,
+    formula: promptById.vocation.formula,
+    prompt: promptById.vocation.prompt,
+    ready: (m) => Boolean(m && clean(m.need) && clean(m.reward)),
     generate: (m) => {
-      const offer = clip(m.offer, 90);
-      const reward = clip(m.reward, 90);
+      const need = clip(m.need);
+      const reward = clip(m.reward);
       return [
-        `Exchange: deliver “${offer}” → receive “${reward}”.`,
-        `Price or structure the work so “${reward}” is the natural outcome of “${offer}”.`,
-        `Cut any version of the offer that cannot produce “${reward}”.`,
+        `Vocation: meet “${need}” in a form that yields “${reward}”.`,
+        `Useful and paid: solve “${need}” → receive “${reward}”.`,
       ];
     },
   },
   {
-    id: "have-need",
-    formula: "Skills I Have + Who Needs It",
-    result: "Where you can help now",
+    id: "ikigai",
+    label: promptById.ikigai.label,
+    formula: promptById.ikigai.formula,
+    prompt: promptById.ikigai.prompt,
     ready: (m) =>
-      Boolean(m && m.skillsHave.some((s) => s.name.trim()) && clean(m.need)),
+      Boolean(
+        m &&
+          clean(m.want) &&
+          clean(m.goodAt ?? "") &&
+          clean(m.need) &&
+          clean(m.reward)
+      ),
     generate: (m) => {
-      const have = skillList(m.skillsHave) || "your current skills";
-      const need = clip(m.need, 90);
+      const offer = clean(m.offer);
+      const core = offer
+        ? `Center: deliver “${clip(offer)}”.`
+        : `Center: love (${clip(m.want, 40)}) × skill (${clip(m.goodAt ?? "", 40)}) × need (${clip(m.need, 40)}) × reward (${clip(m.reward, 40)}).`;
       return [
-        `Apply ${have} toward “${need}” without waiting on new skills.`,
-        `Lead with ${have} — that’s the shortest path into “${need}”.`,
-      ];
-    },
-  },
-  {
-    id: "want-gap",
-    formula: "What I Want + Skills I Lack",
-    result: "Gaps to close",
-    ready: (m) =>
-      Boolean(m && clean(m.want) && m.skillsLack.some((s) => s.name.trim())),
-    generate: (m) => {
-      const want = clip(m.want, 90);
-      const gaps = skillList(m.skillsLack) || "the skills you listed";
-      return [
-        `To reach “${want}”, close: ${gaps}.`,
-        `Priority learning for “${want}”: ${gaps}.`,
-        `Block time this week on the highest-leverage gap among: ${gaps}.`,
+        core,
+        `Smallest honest ikigai this month: one action that touches all four circles.`,
       ];
     },
   },
 ];
 
-export function getConnection(id: InsightConnectionId): InsightConnection {
-  const found = INSIGHT_CONNECTIONS.find((c) => c.id === id);
-  if (!found) throw new Error(`Unknown connection: ${id}`);
-  return found;
+const VALID_IDS = new Set<string>(INSIGHT_CONNECTIONS.map((c) => c.id));
+
+/** Drop legacy / unknown connection ids from stored insights. */
+export function normalizeInsights(raw: InsightIdea[] | undefined): InsightIdea[] {
+  if (!raw) return [];
+  return raw.filter((i) => VALID_IDS.has(i.connectionId));
 }
 
-/**
- * Auto-generate 3–5 insight ideas from filled map overlaps.
- * Skips connections that aren't ready. Caps total ideas.
- */
 export function generateInsightIdeas(
   map: PurposeMap | null,
   maxIdeas = 5
@@ -136,8 +135,7 @@ export function generateInsightIdeas(
   for (const conn of INSIGHT_CONNECTIONS) {
     if (ideas.length >= maxIdeas) break;
     if (!conn.ready(map)) continue;
-    const texts = conn.generate(map);
-    for (const text of texts) {
+    for (const text of conn.generate(map)) {
       if (ideas.length >= maxIdeas) break;
       ideas.push({
         id: nanoid(10),
@@ -152,7 +150,6 @@ export function generateInsightIdeas(
   return ideas.slice(0, maxIdeas);
 }
 
-/** Replace auto ideas; keep manual ones. */
 export function mergeAutoInsights(
   existing: InsightIdea[],
   generated: InsightIdea[]

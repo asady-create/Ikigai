@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowRightLeft, Check, Plus, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { PurposeMap, Skill } from "@/lib/types";
-import { createEmptyMap } from "@/lib/synthesis";
+import { createEmptyMap, normalizeMap } from "@/lib/synthesis";
 import { useIkigai } from "@/components/providers/ikigai-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,7 +128,7 @@ export function SkillsPage() {
 
   useEffect(() => {
     if (!ready || hydrated.current) return;
-    setMap(data.map ?? createEmptyMap());
+    setMap(normalizeMap(data.map));
     hydrated.current = true;
   }, [ready, data.map]);
 

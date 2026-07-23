@@ -10,14 +10,16 @@ export interface Skill {
 }
 
 export interface PurposeMap {
-  /** What do you want? */
+  /** What you love / what you want. */
   want: string;
-  /** How do you want society to reward you? */
-  reward: string;
-  /** What will you build or deliver that others want? */
-  offer: string;
-  /** Who needs this, and why? */
+  /** What you’re good at (reflection). */
+  goodAt: string;
+  /** What the world needs / who needs it. */
   need: string;
+  /** What you can be paid for / how you’re rewarded. */
+  reward: string;
+  /** What you will deliver (center / offer). */
+  offer: string;
   skillsHave: Skill[];
   skillsLack: Skill[];
   /** Plain synthesis of the above. Editable. */
@@ -46,17 +48,16 @@ export interface Note {
   updatedAt: string;
 }
 
-/** Overlap pairs shown in Insights / Connection View. */
+/** Classic ikigai intersections for Insights. */
 export type InsightConnectionId =
-  | "want-need"
-  | "offer-need"
-  | "offer-reward"
-  | "have-need"
-  | "want-gap";
+  | "passion"
+  | "mission"
+  | "profession"
+  | "vocation"
+  | "ikigai";
 
 export interface InsightIdea {
   id: string;
-  /** Which overlap this idea belongs to. */
   connectionId: InsightConnectionId;
   text: string;
   source: "auto" | "manual";

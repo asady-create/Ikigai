@@ -47,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <header className="sticky top-0 z-40 border-b border-[var(--border)]/80 bg-[var(--background)]/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-4 px-4 sm:px-6">
+          <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" className="group">
             <span className="font-display text-xl font-bold tracking-tight text-[var(--foreground)] transition group-hover:text-[var(--accent)]">
               Ikigai
@@ -136,12 +136,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
         {children}
       </main>
 
-      <footer className="mx-auto max-w-3xl border-t border-[var(--border)] px-4 py-8 text-center text-xs text-[var(--muted)] sm:px-6 print:hidden">
-        Private · stored only in this browser
+      <footer className="mx-auto max-w-4xl border-t border-[var(--border)] px-4 py-8 text-center text-xs text-[var(--muted)] sm:px-6 print:hidden">
+        Private · saved in this browser (localStorage)
       </footer>
     </div>
   );

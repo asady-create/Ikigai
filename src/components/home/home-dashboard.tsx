@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Minus, Download } from "lucide-react";
 import { useIkigai } from "@/components/providers/ikigai-provider";
-import { IkigaiDiagram } from "@/components/shared/ikigai-diagram";
+import { IkigaiDiagramStatic } from "@/components/map/ikigai-canvas";
 import { mapProgress } from "@/lib/synthesis";
 import { downloadMarkdown } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
@@ -17,33 +17,39 @@ const ANDREESSEN_QUOTE =
 const SECTIONS = [
   {
     key: "want" as const,
-    label: "What I want",
-    href: "/map#want",
-    hint: "Love / direction",
+    label: "What you love",
+    href: "/map",
+    hint: "Love / want",
+  },
+  {
+    key: "goodAt" as const,
+    label: "What you’re good at",
+    href: "/map",
+    hint: "Skill reflection",
+  },
+  {
+    key: "need" as const,
+    label: "What the world needs",
+    href: "/map",
+    hint: "Need",
+  },
+  {
+    key: "reward" as const,
+    label: "What you can be paid for",
+    href: "/map",
+    hint: "Reward",
   },
   {
     key: "offer" as const,
     label: "What I deliver",
-    href: "/map#offer",
-    hint: "What others use",
-  },
-  {
-    key: "need" as const,
-    label: "Who needs it",
-    href: "/map#need",
-    hint: "World needs",
-  },
-  {
-    key: "reward" as const,
-    label: "How I’m rewarded",
-    href: "/map#reward",
-    hint: "Paid for",
+    href: "/map",
+    hint: "Center / 生き甲斐",
   },
   {
     key: "skillsHave" as const,
     label: "Skills I have",
     href: "/skills",
-    hint: "Good at",
+    hint: "Inventory",
   },
   {
     key: "skillsLack" as const,
@@ -130,7 +136,15 @@ export function HomeDashboard() {
         transition={{ delay: 0.22 }}
         className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-6 sm:px-6 sm:py-8"
       >
-        <IkigaiDiagram />
+        <IkigaiDiagramStatic />
+        <div className="mt-4">
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/map">
+              Write on the diagram
+              <ArrowRight />
+            </Link>
+          </Button>
+        </div>
       </motion.section>
 
       <motion.section
