@@ -1,8 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowRightLeft, Check, Plus, X } from "lucide-react";
+import { AnimatePresence, Reorder, motion, useDragControls } from "framer-motion";
+import {
+  ArrowRightLeft,
+  Check,
+  ChevronDown,
+  GripVertical,
+  Plus,
+  X,
+} from "lucide-react";
 import { nanoid } from "nanoid";
 import type { PurposeMap, Skill } from "@/lib/types";
 import { createEmptyMap, normalizeMap } from "@/lib/synthesis";
@@ -10,6 +17,138 @@ import { useIkigai } from "@/components/providers/ikigai-provider";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+function SkillCard({
+  skill,
+  accent,
+  noteOpen,
+  onToggleNote,
+  onRemove,
+  onRename,
+  onNote,
+  onMove,
+  moveLabel,
+}: {
+  skill: Skill;
+  accent: "have" | "lack";
+  noteOpen: boolean;
+  onToggleNote: () => void;
+  onRemove: () => void;
+  onRename: (name: string) => void;
+  onNote: (note: string) => void;
+  onMove: () => void;
+  moveLabel: string;
+}) {
+  const controls = useDragControls();
+  const hasNote = Boolean(skill.note.trim());
+
+  return (
+    <Reorder.Item
+      value={skill}
+      id={skill.id}
+      dragListener={false}
+      dragControls={controls}
+      className={cn(
+        "list-none rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3",
+        accent === "lack" && "border-l-2 border-l-[var(--accent)]"
+      )}
+      whileDrag={{
+        scale: 1.02,
+        boxShadow: "0 8px 24px rgba(18, 20, 26, 0.12)",
+        zIndex: 20,
+      }}
+    >
+      <div className="flex items-start gap-1.5">
+        <button
+          type="button"
+          className="mt-6 shrink-0 cursor-grab touch-none rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          onPointerDown={(e) => controls.start(e)}
+        >
+          <GripVertical className="size-4" />
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[10px] font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
+            Skill
+          </p>
+          <Input
+            value={skill.name}
+            onChange={(e) => onRename(e.target.value)}
+            aria-label="Skill name"
+            placeholder="Skill name"
+            className="h-9 border-[var(--border)] bg-[var(--background)] font-medium"
+          />
+        </div>
+
+        <div className="mt-5 flex shrink-0 gap-0.5">
+          <button
+            type="button"
+            onClick={onToggleNote}
+            className={cn(
+              "rounded p-1.5 transition",
+              noteOpen || hasNote
+                ? "text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                : "text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+            )}
+            aria-label={noteOpen ? "Hide note" : "Show note"}
+            aria-expanded={noteOpen}
+            title={noteOpen ? "Hide note" : "Show note"}
+          >
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform",
+                noteOpen && "rotate-180"
+              )}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={onMove}
+            className="rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+            aria-label={moveLabel}
+            title={moveLabel}
+          >
+            <ArrowRightLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded p-1.5 text-[var(--muted)] transition hover:text-red-600"
+            aria-label={`Remove ${skill.name || "skill"}`}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {noteOpen && (
+          <motion.div
+            key="note"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2.5 ml-7 border-l-2 border-[var(--border)] pl-3">
+              <Textarea
+                id={`skill-note-${skill.id}`}
+                value={skill.note}
+                onChange={(e) => onNote(e.target.value)}
+                aria-label={`Note for ${skill.name || "skill"}`}
+                placeholder="Level, proof, why it matters…"
+                rows={2}
+                className="min-h-[64px] resize-y border-[var(--border)] bg-[var(--background)]/70 px-2.5 py-2 text-xs leading-relaxed text-[var(--muted)] placeholder:text-[var(--muted)]/50 focus:text-[var(--foreground)]"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </Reorder.Item>
+  );
+}
 
 function SkillColumn({
   title,
@@ -22,6 +161,7 @@ function SkillColumn({
   onRename,
   onNote,
   onMove,
+  onReorder,
   moveLabel,
   accent,
 }: {
@@ -35,9 +175,22 @@ function SkillColumn({
   onRename: (id: string, name: string) => void;
   onNote: (id: string, note: string) => void;
   onMove: (id: string) => void;
+  onReorder: (next: Skill[]) => void;
   moveLabel: string;
   accent: "have" | "lack";
 }) {
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
+
+  const toggleNote = (id: string) => {
+    setOpenNotes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const isNoteOpen = (skill: Skill) => {
+    if (openNotes[skill.id] !== undefined) return openNotes[skill.id];
+    // Default: open if there's already a note
+    return Boolean(skill.note.trim());
+  };
+
   return (
     <section className="space-y-4">
       <div>
@@ -47,68 +200,31 @@ function SkillColumn({
         <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p>
       </div>
 
-      <ul className="space-y-3">
-        {skills.length === 0 && (
-          <li className="py-2 text-sm text-[var(--muted)]">None yet.</li>
-        )}
-        {skills.map((skill) => (
-          <li
-            key={skill.id}
-            className={cn(
-              "rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3",
-              accent === "lack" && "border-l-2 border-l-[var(--accent)]"
-            )}
-          >
-            {/* Skill name — primary */}
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="mb-1 text-[10px] font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
-                  Skill
-                </p>
-                <Input
-                  value={skill.name}
-                  onChange={(e) => onRename(skill.id, e.target.value)}
-                  aria-label="Skill name"
-                  placeholder="Skill name"
-                  className="h-9 border-[var(--border)] bg-[var(--background)] font-medium"
-                />
-              </div>
-              <div className="mt-5 flex shrink-0 gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => onMove(skill.id)}
-                  className="rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
-                  aria-label={moveLabel}
-                  title={moveLabel}
-                >
-                  <ArrowRightLeft className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRemove(skill.id)}
-                  className="rounded p-1.5 text-[var(--muted)] transition hover:text-red-600"
-                  aria-label={`Remove ${skill.name || "skill"}`}
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Note — nested under this skill */}
-            <div className="mt-2.5 ml-1 border-l-2 border-[var(--border)] pl-3">
-              <Textarea
-                id={`skill-note-${skill.id}`}
-                value={skill.note}
-                onChange={(e) => onNote(skill.id, e.target.value)}
-                aria-label={`Note for ${skill.name || "skill"}`}
-                placeholder="Level, proof, why it matters…"
-                rows={2}
-                className="min-h-[64px] resize-y border-[var(--border)] bg-[var(--background)]/70 px-2.5 py-2 text-xs leading-relaxed text-[var(--muted)] placeholder:text-[var(--muted)]/50 focus:text-[var(--foreground)]"
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
+      {skills.length === 0 ? (
+        <p className="py-2 text-sm text-[var(--muted)]">None yet.</p>
+      ) : (
+        <Reorder.Group
+          axis="y"
+          values={skills}
+          onReorder={onReorder}
+          className="flex flex-col gap-3"
+        >
+          {skills.map((skill) => (
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              accent={accent}
+              noteOpen={isNoteOpen(skill)}
+              onToggleNote={() => toggleNote(skill.id)}
+              onRemove={() => onRemove(skill.id)}
+              onRename={(name) => onRename(skill.id, name)}
+              onNote={(note) => onNote(skill.id, note)}
+              onMove={() => onMove(skill.id)}
+              moveLabel={moveLabel}
+            />
+          ))}
+        </Reorder.Group>
+      )}
 
       <form
         className="flex gap-2"
@@ -244,9 +360,8 @@ export function SkillsPage() {
             Have vs lack
           </h1>
           <p className="mt-2 max-w-md text-sm text-[var(--muted)]">
-            Each skill has its own note underneath. Use Shift+Enter (or Enter)
-            for a new line in the note. Move a skill between columns if it
-            changes.
+            Drag the grip to reorder. Use the chevron to show or hide each
+            skill’s note.
           </p>
         </div>
         <span
@@ -269,7 +384,7 @@ export function SkillsPage() {
       >
         <SkillColumn
           title="I have"
-          subtitle="Skills you can already use. Click a name to edit."
+          subtitle="Skills you can already use."
           skills={map.skillsHave}
           draft={haveDraft}
           setDraft={setHaveDraft}
@@ -288,10 +403,11 @@ export function SkillsPage() {
           onRename={(id, name) => renameSkill("skillsHave", id, name)}
           onNote={(id, note) => noteSkill("skillsHave", id, note)}
           onMove={(id) => moveSkill("skillsHave", id)}
+          onReorder={(next) => updateSkills("skillsHave", next)}
         />
         <SkillColumn
           title="I lack"
-          subtitle="Skills required for what you want. Edit anytime."
+          subtitle="Skills required for what you want."
           skills={map.skillsLack}
           draft={lackDraft}
           setDraft={setLackDraft}
@@ -310,6 +426,7 @@ export function SkillsPage() {
           onRename={(id, name) => renameSkill("skillsLack", id, name)}
           onNote={(id, note) => noteSkill("skillsLack", id, note)}
           onMove={(id) => moveSkill("skillsLack", id)}
+          onReorder={(next) => updateSkills("skillsLack", next)}
         />
       </motion.div>
     </div>
