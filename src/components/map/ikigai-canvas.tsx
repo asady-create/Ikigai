@@ -17,19 +17,20 @@ const ZONE_LAYOUT: Record<
   { className: string; accent: string }
 > = {
   love: {
-    className: "left-[2%] top-[2%] h-[46%] w-[46%]",
+    // Outer corner only — leave a clear pocket for the center
+    className: "left-[2%] top-[2%] h-[34%] w-[40%]",
     accent: "rgba(13, 92, 99, 0.55)",
   },
   goodAt: {
-    className: "right-[2%] top-[2%] h-[46%] w-[46%]",
+    className: "right-[2%] top-[2%] h-[34%] w-[40%]",
     accent: "rgba(37, 99, 120, 0.5)",
   },
   need: {
-    className: "left-[2%] bottom-[2%] h-[46%] w-[46%]",
+    className: "left-[2%] bottom-[2%] h-[34%] w-[40%]",
     accent: "rgba(71, 85, 105, 0.45)",
   },
   reward: {
-    className: "right-[2%] bottom-[2%] h-[46%] w-[46%]",
+    className: "right-[2%] bottom-[2%] h-[34%] w-[40%]",
     accent: "rgba(15, 118, 110, 0.5)",
   },
 };
@@ -83,11 +84,11 @@ function DiagramBackdrop({ active }: { active: CircleId | "center" | null }) {
       <circle
         cx="200"
         cy="200"
-        r="48"
+        r="36"
         fill={
           active === "center"
-            ? "rgba(13, 92, 99, 0.22)"
-            : "rgba(13, 92, 99, 0.12)"
+            ? "rgba(13, 92, 99, 0.2)"
+            : "rgba(13, 92, 99, 0.1)"
         }
         stroke="rgba(13, 92, 99, 0.35)"
         strokeWidth="1.25"
@@ -214,44 +215,76 @@ export function IkigaiCanvas({ map, onChange, onBlurSave }: IkigaiCanvasProps) {
           );
         })}
 
-        {/* Center — offer / deliver (typeable) */}
-        <div className="absolute top-1/2 left-1/2 z-20 flex w-[42%] max-w-[15rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:w-[38%] sm:max-w-[16rem]">
-          <span
-            className={cn(
-              "mb-1 rounded-full px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-white uppercase sm:text-[10px]",
-              "bg-[var(--accent)]/90"
-            )}
-          >
-            生き甲斐 · Deliver
-          </span>
-          <textarea
-            id="circle-center"
-            value={map.offer}
-            onChange={(e) => onChange("offer", e.target.value)}
-            onFocus={() => setActive("center")}
-            onBlur={() => {
-              setActive((a) => (a === "center" ? null : a));
-              onBlurSave?.();
-            }}
-            placeholder={CENTER_PROMPT.placeholder}
-            aria-label={CENTER_PROMPT.label}
-            rows={4}
-            className={cn(
-              "min-h-[5.5rem] w-full resize-none rounded-2xl border px-3 py-2.5 text-center text-xs leading-snug sm:min-h-[6.5rem] sm:text-sm sm:leading-relaxed",
-              "bg-white/95 text-[var(--foreground)] shadow-md backdrop-blur-sm",
-              "placeholder:text-[var(--muted)]/45",
-              "focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40",
-              active === "center"
-                ? "border-[var(--accent)]"
-                : "border-[var(--accent)]/35"
-            )}
-          />
+        {/* Center — compact; full typing below so it never covers need/reward */}
+        <div className="pointer-events-none absolute inset-[36%] z-20 flex items-center justify-center">
+          <div className="pointer-events-auto flex w-full max-w-[9rem] flex-col items-center sm:max-w-[10rem]">
+            <span
+              className={cn(
+                "mb-1 rounded-full px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-white uppercase",
+                "bg-[var(--accent)]/90"
+              )}
+            >
+              生き甲斐
+            </span>
+            <textarea
+              id="circle-center"
+              value={map.offer}
+              onChange={(e) => onChange("offer", e.target.value)}
+              onFocus={() => setActive("center")}
+              onBlur={() => {
+                setActive((a) => (a === "center" ? null : a));
+                onBlurSave?.();
+              }}
+              placeholder="What you deliver…"
+              aria-label={CENTER_PROMPT.label}
+              rows={2}
+              className={cn(
+                "h-[3.25rem] w-full resize-none rounded-xl border px-2 py-1.5 text-center text-[11px] leading-snug sm:text-xs",
+                "bg-white/95 text-[var(--foreground)] shadow-md backdrop-blur-sm",
+                "placeholder:text-[var(--muted)]/45",
+                "focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40",
+                active === "center"
+                  ? "border-[var(--accent)]"
+                  : "border-[var(--accent)]/35"
+              )}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Expanded editor when a zone (or center) is active — easier typing */}
+      {/* Always-available deliver editor — primary place to write longer text */}
+      <div
+        className={cn(
+          "rounded-xl border bg-[var(--surface)] px-4 py-3 transition-colors",
+          active === "center"
+            ? "border-[var(--accent)]/50"
+            : "border-[var(--border)]"
+        )}
+      >
+        <label
+          htmlFor="deliver-expanded"
+          className="text-xs font-semibold tracking-[0.14em] text-[var(--accent)] uppercase"
+        >
+          What I deliver
+        </label>
+        <p className="mt-1 text-xs text-[var(--muted)]">{CENTER_PROMPT.prompt}</p>
+        <textarea
+          id="deliver-expanded"
+          value={map.offer}
+          onChange={(e) => onChange("offer", e.target.value)}
+          onFocus={() => setActive("center")}
+          onBlur={() => {
+            setActive((a) => (a === "center" ? null : a));
+            onBlurSave?.();
+          }}
+          placeholder={CENTER_PROMPT.placeholder}
+          className="mt-2 min-h-[100px] w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-relaxed"
+        />
+      </div>
+
+      {/* Expanded editor for the four outer circles */}
       <AnimatePresence>
-        {(activePrompt || active === "center") && (
+        {activePrompt && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -259,28 +292,14 @@ export function IkigaiCanvas({ map, onChange, onBlurSave }: IkigaiCanvasProps) {
             className="overflow-hidden"
           >
             <p className="mb-2 text-xs text-[var(--muted)]">
-              {active === "center"
-                ? "Expanded — what you deliver (center)"
-                : `Expanded — ${activePrompt?.label}`}
+              Expanded — {activePrompt.label}
             </p>
             <textarea
-              value={
-                active === "center" ? map.offer : map[activePrompt!.field]
-              }
-              onChange={(e) =>
-                onChange(
-                  active === "center" ? "offer" : activePrompt!.field,
-                  e.target.value
-                )
-              }
+              value={map[activePrompt.field]}
+              onChange={(e) => onChange(activePrompt.field, e.target.value)}
               onBlur={() => onBlurSave?.()}
-              placeholder={
-                active === "center"
-                  ? CENTER_PROMPT.placeholder
-                  : activePrompt!.placeholder
-              }
+              placeholder={activePrompt.placeholder}
               className="min-h-[120px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm leading-relaxed"
-              autoFocus={false}
             />
           </motion.div>
         )}
