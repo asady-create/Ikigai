@@ -13,7 +13,7 @@ import type { AppData, InsightIdea, Note, PurposeMap } from "@/lib/types";
 import {
   deleteNote as storageDeleteNote,
   flushAppData,
-  loadAppData,
+  hydrateAppData,
   saveInsights as storageSaveInsights,
   saveMap as storageSaveMap,
   saveNote as storageSaveNote,
@@ -26,7 +26,8 @@ interface IkigaiStore {
   data: AppData;
   notes: Note[];
   insights: InsightIdea[];
-  refresh: () => void;
+  diskPath: string | null;
+  refresh: () => Promise<void>;
   upsertMap: (map: PurposeMap) => void;
   upsertNote: (note: Note) => void;
   removeNote: (id: string) => void;
@@ -36,26 +37,40 @@ interface IkigaiStore {
 const IkigaiContext = createContext<IkigaiStore | null>(null);
 
 export function IkigaiProvider({ children }: { children: ReactNode }) {
-  // Start empty; load only on the client after mount — avoids SSR empty
-  // state being flushed over real localStorage data.
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<AppData>(EMPTY);
+  const [diskPath, setDiskPath] = useState<string | null>(null);
   const dataRef = useRef(data);
   const readyRef = useRef(false);
   dataRef.current = data;
 
-  const refresh = useCallback(() => {
-    setData(loadAppData());
+  const refresh = useCallback(async () => {
+    const loaded = await hydrateAppData();
+    setData(loaded);
   }, []);
 
   useEffect(() => {
-    const loaded = loadAppData();
-    setData(loaded);
-    readyRef.current = true;
-    setReady(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const meta = await fetch("/api/data", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null);
+        if (!cancelled && meta?.path) setDiskPath(meta.path as string);
+      } catch {
+        /* ignore */
+      }
+      const loaded = await hydrateAppData();
+      if (cancelled) return;
+      setData(loaded);
+      readyRef.current = true;
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Flush only after hydration, and never flush empty payloads
   useEffect(() => {
     const flush = () => {
       if (!readyRef.current) return;
@@ -114,6 +129,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         data,
         notes,
         insights,
+        diskPath,
         refresh,
         upsertMap,
         upsertNote,

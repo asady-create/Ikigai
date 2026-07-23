@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# personal ikigai data (lives on your machine)
+/data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

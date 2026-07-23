@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useIkigai } from "@/components/providers/ikigai-provider";
 
 const NAV = [
   { href: "/", label: "Overview", icon: Home },
@@ -27,6 +28,7 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { diskPath, ready } = useIkigai();
 
   return (
     <div className="relative min-h-dvh">
@@ -141,7 +143,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
 
       <footer className="mx-auto max-w-4xl border-t border-[var(--border)] px-4 py-8 text-center text-xs text-[var(--muted)] sm:px-6 print:hidden">
-        Private · saved in this browser (localStorage)
+        {ready ? (
+          <>
+            Saved on this computer
+            {diskPath ? (
+              <>
+                {" "}
+                · <span className="break-all font-mono text-[10px]">{diskPath}</span>
+              </>
+            ) : (
+              " · data/ikigai-store.json"
+            )}
+          </>
+        ) : (
+          "Loading saved data…"
+        )}
       </footer>
     </div>
   );

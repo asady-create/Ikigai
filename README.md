@@ -1,6 +1,6 @@
 # Ikigai 2.0
 
-Private purpose map. Data stays in your browser.
+Private purpose map. Saved on your computer in `data/ikigai-store.json`.
 
 ## What it does
 
@@ -13,11 +13,19 @@ Private purpose map. Data stays in your browser.
 7. **Notes** — mini journal with map tags, search, date filter
 8. **Synthesis** — plain summary of the map
 
-## Stack
+## Persistence
 
-- Next.js 15 + TypeScript
-- Tailwind CSS v4
-- localStorage only (`ikigai:v2`)
+Your answers are saved automatically to:
+
+```
+data/ikigai-store.json
+```
+
+inside this project folder on your computer. That file survives restarts —
+you do **not** need to export every time. (The file is gitignored.)
+
+Also cached in the browser for speed. Disk is the source of truth when you
+run `npm run dev` or `npm start` locally.
 
 ## Run
 

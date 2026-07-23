@@ -1,10 +1,9 @@
 /**
- * localStorage persistence — private, browser-only.
+ * Persistence:
+ * 1) Disk file via /api/data → data/ikigai-store.json (survives reboot)
+ * 2) localStorage cache + snapshot (fast UI, offline buffer)
  *
- * Safety rules:
- * - Never overwrite non-empty saved data with an empty payload
- *   (guards against React Strict Mode / SSR hydration races).
- * - Keep a durable snapshot of the last non-empty state for recovery.
+ * Disk is the source of truth on your computer when the Next.js app is running.
  */
 
 import type {
@@ -49,16 +48,20 @@ function normalizeNote(
   };
 }
 
+export function normalizeAppData(raw: Partial<AppData> | null): AppData {
+  if (!raw) return structuredClone(DEFAULT_DATA);
+  return {
+    ...structuredClone(DEFAULT_DATA),
+    ...raw,
+    map: raw.map ? normalizeMap(raw.map) : null,
+    notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
+    insights: normalizeInsights(raw.insights),
+  };
+}
+
 function parsePayload(raw: string): AppData | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<AppData>;
-    return {
-      ...structuredClone(DEFAULT_DATA),
-      ...parsed,
-      map: parsed.map ? normalizeMap(parsed.map) : null,
-      notes: (parsed.notes ?? []).map((n) => normalizeNote(n)),
-      insights: normalizeInsights(parsed.insights),
-    };
+    return normalizeAppData(JSON.parse(raw) as Partial<AppData>);
   } catch {
     return null;
   }
@@ -159,7 +162,7 @@ function migrateLegacy(): AppData | null {
       notes,
       insights: [],
     };
-    saveAppData(data, { force: true });
+    saveAppDataLocal(data, { force: true });
     window.localStorage.removeItem(LEGACY_KEY);
     return data;
   } catch {
@@ -178,23 +181,23 @@ function readKey(key: string): AppData | null {
   }
 }
 
-export function loadAppData(): AppData {
+/** Synchronous browser cache only. */
+export function loadAppDataLocal(): AppData {
   if (!isBrowser()) return structuredClone(DEFAULT_DATA);
 
   const primary = readKey(STORAGE_KEY);
   const snapshot = readKey(SNAPSHOT_KEY);
 
-  // Prefer whichever copy has more content (recovers from empty overwrites)
   if (primary && snapshot) {
     if (contentScore(snapshot) > contentScore(primary)) {
-      saveAppData(snapshot, { force: true });
+      saveAppDataLocal(snapshot, { force: true });
       return snapshot;
     }
     return primary;
   }
   if (primary && !isEffectivelyEmpty(primary)) return primary;
   if (snapshot && !isEffectivelyEmpty(snapshot)) {
-    saveAppData(snapshot, { force: true });
+    saveAppDataLocal(snapshot, { force: true });
     return snapshot;
   }
   if (primary) return primary;
@@ -204,22 +207,27 @@ export function loadAppData(): AppData {
     if (backup) {
       const parsed = parsePayload(backup);
       if (parsed && !isEffectivelyEmpty(parsed)) {
-        saveAppData(parsed, { force: true });
+        saveAppDataLocal(parsed, { force: true });
         return parsed;
       }
     }
   } catch {
-    /* sessionStorage may be blocked */
+    /* ignore */
   }
 
   return migrateLegacy() ?? structuredClone(DEFAULT_DATA);
 }
 
-export function saveAppData(
+/** @deprecated use loadAppDataLocal or hydrateAppData */
+export function loadAppData(): AppData {
+  return loadAppDataLocal();
+}
+
+function saveAppDataLocal(
   data: AppData,
   opts: { force?: boolean } = {}
-): void {
-  if (!isBrowser()) return;
+): boolean {
+  if (!isBrowser()) return false;
 
   if (!opts.force) {
     const existing = readKey(STORAGE_KEY) ?? readKey(SNAPSHOT_KEY);
@@ -231,7 +239,7 @@ export function saveAppData(
       console.warn(
         "[ikigai] Blocked empty overwrite — your saved data was kept."
       );
-      return;
+      return false;
     }
   }
 
@@ -242,7 +250,6 @@ export function saveAppData(
     console.warn("[ikigai] localStorage write failed", err);
   }
 
-  // Durable snapshot: only update when there is real content
   if (!isEffectivelyEmpty(data)) {
     try {
       window.localStorage.setItem(SNAPSHOT_KEY, json);
@@ -256,33 +263,122 @@ export function saveAppData(
   } catch {
     /* ignore */
   }
+  return true;
 }
 
-/** Immediate flush — never writes empty over existing content. */
+let diskTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Write to disk file via API (survives computer restart). */
+export function syncToDisk(data: AppData, immediate = false): void {
+  if (!isBrowser()) return;
+  if (isEffectivelyEmpty(data)) return;
+
+  const send = () => {
+    const body = JSON.stringify(data);
+    try {
+      if (immediate && typeof navigator !== "undefined" && navigator.sendBeacon) {
+        const ok = navigator.sendBeacon(
+          "/api/data",
+          new Blob([body], { type: "application/json" })
+        );
+        if (ok) return;
+      }
+    } catch {
+      /* fall through */
+    }
+    void fetch("/api/data", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch((err) => console.warn("[ikigai] disk sync failed", err));
+  };
+
+  if (immediate) {
+    if (diskTimer) clearTimeout(diskTimer);
+    send();
+    return;
+  }
+
+  if (diskTimer) clearTimeout(diskTimer);
+  diskTimer = setTimeout(send, 200);
+}
+
+export async function fetchDiskData(): Promise<AppData | null> {
+  if (!isBrowser()) return null;
+  try {
+    const res = await fetch("/api/data", { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: Partial<AppData> };
+    if (!json.data) return null;
+    return normalizeAppData(json.data);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load from disk (source of truth) + merge with browser cache.
+ * Call once on app start before marking ready.
+ */
+export async function hydrateAppData(): Promise<AppData> {
+  const local = loadAppDataLocal();
+  const disk = await fetchDiskData();
+
+  if (!disk || isEffectivelyEmpty(disk)) {
+    if (!isEffectivelyEmpty(local)) {
+      // Migrate browser data onto disk
+      syncToDisk(local, true);
+    }
+    return local;
+  }
+
+  if (contentScore(disk) >= contentScore(local)) {
+    saveAppDataLocal(disk, { force: true });
+    return disk;
+  }
+
+  // Browser has newer/richer content — push up to disk
+  syncToDisk(local, true);
+  return local;
+}
+
+export function saveAppData(
+  data: AppData,
+  opts: { force?: boolean; skipDisk?: boolean } = {}
+): void {
+  const wrote = saveAppDataLocal(data, opts);
+  if (wrote && !opts.skipDisk && !isEffectivelyEmpty(data)) {
+    syncToDisk(data);
+  }
+}
+
+/** Immediate flush to browser + disk. */
 export function flushAppData(data: AppData): void {
   if (isEffectivelyEmpty(data)) return;
-  saveAppData(data);
+  saveAppDataLocal(data);
+  syncToDisk(data, true);
 }
 
 export function getMap(): PurposeMap | null {
-  return loadAppData().map;
+  return loadAppDataLocal().map;
 }
 
 export function saveMap(map: PurposeMap): AppData {
-  const data = loadAppData();
+  const data = loadAppDataLocal();
   data.map = normalizeMap({ ...map, updatedAt: new Date().toISOString() });
   saveAppData(data);
   return data;
 }
 
 export function getNotes(): Note[] {
-  return loadAppData().notes.sort(
+  return loadAppDataLocal().notes.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
 
 export function saveNote(note: Note): AppData {
-  const data = loadAppData();
+  const data = loadAppDataLocal();
   const normalized = normalizeNote(note);
   const idx = data.notes.findIndex((n) => n.id === normalized.id);
   if (idx === -1) data.notes.push(normalized);
@@ -292,21 +388,21 @@ export function saveNote(note: Note): AppData {
 }
 
 export function deleteNote(id: string): AppData {
-  const data = loadAppData();
+  const data = loadAppDataLocal();
   data.notes = data.notes.filter((n) => n.id !== id);
   saveAppData(data);
   return data;
 }
 
 export function saveInsights(insights: InsightIdea[]): AppData {
-  const data = loadAppData();
+  const data = loadAppDataLocal();
   data.insights = normalizeInsights(insights);
   saveAppData(data);
   return data;
 }
 
 export function exportMapMarkdown(): string {
-  const { map, notes, insights } = loadAppData();
+  const { map, notes, insights } = loadAppDataLocal();
   const lines = [
     "# Ikigai 2.0",
     "",
@@ -394,4 +490,5 @@ export function resetAllData(): void {
   } catch {
     /* ignore */
   }
+  void fetch("/api/data", { method: "DELETE" }).catch(() => {});
 }
