@@ -22,6 +22,8 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowDown,
   Check,
+  ChevronDown,
+  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -215,21 +217,29 @@ function EventRow({
   areas,
   active,
   editing,
+  canUp,
+  canDown,
   onSelect,
   onEdit,
   onDelete,
   onPatch,
   onDoneEdit,
+  onMoveUp,
+  onMoveDown,
 }: {
   event: TimelineEvent;
   areas: TimelineAreaDef[];
   active: boolean;
   editing: boolean;
+  canUp: boolean;
+  canDown: boolean;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onPatch: (patch: Partial<TimelineEvent>) => void;
   onDoneEdit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const meta = findArea(areas, event.areaId);
   const {
@@ -279,8 +289,10 @@ function EventRow({
         <div
           className={cn(
             "relative z-[1] flex shrink-0 items-center justify-center self-stretch",
-            SPINE_GUTTER
+            SPINE_GUTTER,
+            !editing && "cursor-grab touch-none active:cursor-grabbing"
           )}
+          {...(editing ? {} : listeners)}
         >
           <span
             aria-hidden
@@ -330,7 +342,11 @@ function EventRow({
             <button
               type="button"
               onClick={onSelect}
-              className="w-full py-0.5 text-left"
+              className={cn(
+                "w-full py-0.5 text-left",
+                "cursor-grab touch-none active:cursor-grabbing"
+              )}
+              {...listeners}
             >
               <span className="block truncate text-sm font-medium text-[var(--foreground)]">
                 {event.title}
@@ -342,7 +358,27 @@ function EventRow({
           )}
         </div>
 
-        <div className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100">
+        <div className="mt-1 flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canUp || editing}
+            className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
+            aria-label="Move up"
+            title="Move up"
+          >
+            <ChevronUp className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canDown || editing}
+            className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
+            aria-label="Move down"
+            title="Move down"
+          >
+            <ChevronDown className="size-4" />
+          </button>
           {!editing ? (
             <button
               type="button"
@@ -450,7 +486,14 @@ export function TimelinePage() {
   };
 
   const persistEvents = (next: TimelineEvent[]) => {
-    setTimeline(reindexOrders(next));
+    // `next` must already be in the desired top→bottom order.
+    const ordered = reindexOrders(next);
+    setOrderIds(
+      filter === "all"
+        ? ordered.map((e) => e.id)
+        : ordered.filter((e) => e.areaId === filter).map((e) => e.id)
+    );
+    setTimeline(ordered);
     flash();
   };
 
@@ -462,7 +505,7 @@ export function TimelinePage() {
   const addEvent = () => {
     const t = title.trim();
     if (!t) return;
-    const maxOrder = timeline.reduce((m, e) => Math.max(m, e.order), -1);
+    const base = sortTimeline(timeline);
     const event: TimelineEvent = {
       id: nanoid(10),
       date,
@@ -470,9 +513,9 @@ export function TimelinePage() {
       areaId,
       note: note.trim(),
       createdAt: new Date().toISOString(),
-      order: maxOrder + 1,
+      order: base.length,
     };
-    persistEvents([...timeline, event]);
+    persistEvents([...base, event]);
     setTitle("");
     setNote("");
     setDate(toMonthDate(todayParts().year, todayParts().month));
@@ -481,14 +524,16 @@ export function TimelinePage() {
   };
 
   const removeEvent = (id: string) => {
-    persistEvents(timeline.filter((e) => e.id !== id));
+    persistEvents(sortTimeline(timeline).filter((e) => e.id !== id));
     if (selectedId === id) setSelectedId(null);
     if (editingId === id) setEditingId(null);
   };
 
   const patchEvent = (id: string, patch: Partial<TimelineEvent>) => {
     persistEvents(
-      timeline.map((e) => (e.id === id ? { ...e, ...patch } : e))
+      sortTimeline(timeline).map((e) =>
+        e.id === id ? { ...e, ...patch } : e
+      )
     );
   };
 
@@ -498,9 +543,18 @@ export function TimelinePage() {
 
     const oldIndex = orderIds.indexOf(String(active.id));
     const newIndex = orderIds.indexOf(String(over.id));
-    if (oldIndex < 0 || newIndex < 0) return;
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
 
     const nextIds = arrayMove(orderIds, oldIndex, newIndex);
+    setOrderIds(nextIds);
+    persistEvents(applySubsetOrderByIds(timeline, nextIds));
+  };
+
+  const moveEvent = (id: string, direction: -1 | 1) => {
+    const index = orderIds.indexOf(id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= orderIds.length) return;
+    const nextIds = arrayMove(orderIds, index, target);
     setOrderIds(nextIds);
     persistEvents(applySubsetOrderByIds(timeline, nextIds));
   };
@@ -571,8 +625,8 @@ export function TimelinePage() {
             Chronology
           </h1>
           <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
-            From January 2025 downward. Color marks sit on the arrow — drag
-            the grip (⋮⋮) to reorder. Day is optional.
+            From January 2025 downward. Drag an event (or use ↑ ↓) to reorder.
+            Day is optional.
           </p>
         </div>
         <span
@@ -881,7 +935,7 @@ export function TimelinePage() {
                 strategy={verticalListSortingStrategy}
               >
                 <ul className="relative z-[1] space-y-0.5 pb-10">
-                  {orderIds.map((id) => {
+                  {orderIds.map((id, index) => {
                     const event = eventsById.get(id);
                     if (!event) return null;
                     return (
@@ -893,6 +947,8 @@ export function TimelinePage() {
                           selectedId === event.id || editingId === event.id
                         }
                         editing={editingId === event.id}
+                        canUp={index > 0}
+                        canDown={index < orderIds.length - 1}
                         onSelect={() => {
                           setSelectedId((cur) =>
                             cur === event.id ? null : event.id
@@ -906,6 +962,8 @@ export function TimelinePage() {
                         onDelete={() => removeEvent(event.id)}
                         onPatch={(patch) => patchEvent(event.id, patch)}
                         onDoneEdit={() => setEditingId(null)}
+                        onMoveUp={() => moveEvent(event.id, -1)}
+                        onMoveDown={() => moveEvent(event.id, 1)}
                       />
                     );
                   })}

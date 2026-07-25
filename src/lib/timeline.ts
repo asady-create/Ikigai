@@ -246,9 +246,13 @@ export function sortTimeline(events: TimelineEvent[]): TimelineEvent[] {
   });
 }
 
-/** Reindex orders 0..n-1 after a reorder. */
+/**
+ * Assign order 0..n-1 from the current array positions.
+ * Important: do NOT sort here — callers pass the desired visual order.
+ * (Sorting by the old `order` field would undo swaps.)
+ */
 export function reindexOrders(events: TimelineEvent[]): TimelineEvent[] {
-  return sortTimeline(events).map((e, i) => ({ ...e, order: i }));
+  return events.map((e, i) => ({ ...e, order: i }));
 }
 
 export function moveEventOrder(
