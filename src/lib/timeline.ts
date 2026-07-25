@@ -44,6 +44,9 @@ const MONTH_NAMES = [
   "December",
 ];
 
+const DATE_FULL = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_MONTH = /^\d{4}-\d{2}$/;
+
 export function normalizeTimelineAreas(
   raw: Partial<TimelineAreaDef>[] | undefined | null
 ): TimelineAreaDef[] {
@@ -64,31 +67,41 @@ export function normalizeTimelineAreas(
     : DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a }));
 }
 
+/** Normalize stored date to YYYY-MM-DD, YYYY-MM, or null. */
+export function normalizeEventDate(
+  raw: string | null | undefined
+): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const s = raw.trim();
+  if (DATE_FULL.test(s)) {
+    const { year, month, day } = parseISODate(s);
+    return toISODate(year, month, day);
+  }
+  if (DATE_MONTH.test(s)) {
+    const { year, month } = parseISODate(`${s}-01`);
+    return toMonthDate(year, month);
+  }
+  return null;
+}
+
 export function normalizeTimelineEvent(
   raw: Partial<TimelineEvent> & { id: string } & { area?: string },
   areas: TimelineAreaDef[],
   orderFallback = 0
 ): TimelineEvent {
   const areaIds = new Set(areas.map((a) => a.id));
-  // Migrate legacy `area` field → areaId
   const legacy = (raw as { area?: string }).area;
   let areaId = raw.areaId || legacy || "other";
   if (!areaIds.has(areaId)) {
     areaId = areas[0]?.id ?? "other";
   }
-  // Empty string / missing → unknown date (null)
-  const rawDate = raw.date;
-  const date =
-    typeof rawDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
-      ? rawDate
-      : null;
   const order =
     typeof raw.order === "number" && Number.isFinite(raw.order)
       ? raw.order
       : orderFallback;
   return {
     id: raw.id,
-    date,
+    date: normalizeEventDate(raw.date),
     title: raw.title ?? "",
     areaId,
     note: raw.note ?? "",
@@ -110,7 +123,16 @@ export function findArea(
   );
 }
 
-/** Parse YYYY-MM-DD into parts (local-safe). */
+export type DatePrecision = "none" | "month" | "day";
+
+export function datePrecision(iso: string | null | undefined): DatePrecision {
+  if (!iso) return "none";
+  if (DATE_FULL.test(iso)) return "day";
+  if (DATE_MONTH.test(iso)) return "month";
+  return "none";
+}
+
+/** Parse YYYY-MM or YYYY-MM-DD into parts (local-safe). */
 export function parseISODate(iso: string): {
   year: number;
   month: number;
@@ -130,24 +152,35 @@ export function toISODate(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
 }
 
+export function toMonthDate(year: number, month: number): string {
+  const m = Math.min(Math.max(1, month), 12);
+  return `${year}-${String(m).padStart(2, "0")}`;
+}
+
 export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-/** Clear human date: "15 January 2025" — or "Date unknown" */
+/** Clear human date — supports day, month-only, or unknown. */
 export function formatDisplayDate(iso: string | null | undefined): string {
-  if (!iso) return "Date unknown";
-  const { year, month, day } = parseISODate(iso);
-  if (!year || !month || !day) return "Date unknown";
+  const precision = datePrecision(iso);
+  if (precision === "none" || !iso) return "Date unknown";
+  const { year, month, day } = parseISODate(
+    precision === "month" ? `${iso}-01` : iso
+  );
+  if (precision === "month") return `${MONTH_NAMES[month - 1]} ${year}`;
   return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
-/** Shorter: "15 Jan 2025" — or "Date unknown" */
+/** Shorter label for list rows. */
 export function formatShortDate(iso: string | null | undefined): string {
-  if (!iso) return "Date unknown";
-  const { year, month, day } = parseISODate(iso);
-  if (!year || !month || !day) return "Date unknown";
+  const precision = datePrecision(iso);
+  if (precision === "none" || !iso) return "Date unknown";
+  const { year, month, day } = parseISODate(
+    precision === "month" ? `${iso}-01` : iso
+  );
   const short = MONTH_NAMES[month - 1].slice(0, 3);
+  if (precision === "month") return `${short} ${year}`;
   return `${day} ${short} ${year}`;
 }
 
@@ -233,4 +266,21 @@ export function moveEventOrder(
   next[index] = next[target];
   next[target] = tmp;
   return reindexOrders(next);
+}
+
+/**
+ * Apply a new order of a subset (e.g. filtered list) back onto the full
+ * timeline, preserving relative positions of untouched events.
+ */
+export function applySubsetOrder(
+  all: TimelineEvent[],
+  orderedSubset: TimelineEvent[]
+): TimelineEvent[] {
+  const sorted = sortTimeline(all);
+  const ids = new Set(orderedSubset.map((e) => e.id));
+  let i = 0;
+  const merged = sorted.map((e) =>
+    ids.has(e.id) ? orderedSubset[i++]! : e
+  );
+  return reindexOrders(merged);
 }

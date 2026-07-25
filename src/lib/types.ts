@@ -76,7 +76,12 @@ export interface TimelineAreaDef {
 
 export interface TimelineEvent {
   id: string;
-  /** YYYY-MM-DD, or null when the exact date is unknown */
+  /**
+   * Partial or full date, or null when unknown:
+   * - `YYYY-MM-DD` — exact day
+   * - `YYYY-MM` — month + year only (day unknown)
+   * - `null` — no date
+   */
   date: string | null;
   title: string;
   /** References TimelineAreaDef.id */

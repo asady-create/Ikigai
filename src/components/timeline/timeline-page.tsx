@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  AnimatePresence,
+  Reorder,
+  motion,
+  useDragControls,
+} from "framer-motion";
 import {
   ArrowDown,
   Check,
-  ChevronDown,
-  ChevronUp,
+  GripVertical,
   Pencil,
   Plus,
   Trash2,
@@ -17,30 +21,39 @@ import { useIkigai } from "@/components/providers/ikigai-provider";
 import type { TimelineAreaDef, TimelineEvent } from "@/lib/types";
 import {
   AREA_COLOR_PRESETS,
+  applySubsetOrder,
+  datePrecision,
   daysInMonth,
   findArea,
   formatDisplayDate,
   formatShortDate,
   monthOptions,
-  moveEventOrder,
   parseISODate,
   reindexOrders,
   sortTimeline,
   toISODate,
+  toMonthDate,
   yearOptions,
 } from "@/lib/timeline";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function todayParts() {
+  const n = new Date();
+  return { year: n.getFullYear(), month: n.getMonth() + 1, day: n.getDate() };
 }
 
 const selectClass =
   "flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30";
 
-/** Optional day/month/year selects with a clear readable readout. */
+/** Width of the spine gutter so the vertical arrow and color marks share one center. */
+const SPINE_GUTTER = "w-12 sm:w-14";
+
+/**
+ * Month + year always when a date is set; day is optional ("—" = month only).
+ * Or leave date entirely unset.
+ */
 function ClearDatePicker({
   value,
   onChange,
@@ -50,19 +63,21 @@ function ClearDatePicker({
   onChange: (iso: string | null) => void;
   idPrefix?: string;
 }) {
-  const known = Boolean(value);
-  const parts = parseISODate(value || todayISO());
+  const precision = datePrecision(value);
+  const hasDate = precision !== "none";
+  const fallback = todayParts();
+  const parts = hasDate
+    ? parseISODate(precision === "month" ? `${value}-01` : value!)
+    : fallback;
   const years = yearOptions();
   const months = monthOptions();
   const dim = daysInMonth(parts.year, parts.month);
-  const day = Math.min(parts.day, dim);
   const days = Array.from({ length: dim }, (_, i) => i + 1);
+  const dayValue = precision === "day" ? Math.min(parts.day, dim) : "";
 
-  const setPart = (next: { year?: number; month?: number; day?: number }) => {
-    const y = next.year ?? parts.year;
-    const m = next.month ?? parts.month;
-    const d = next.day ?? day;
-    onChange(toISODate(y, m, d));
+  const emit = (year: number, month: number, day: number | null) => {
+    if (day == null) onChange(toMonthDate(year, month));
+    else onChange(toISODate(year, month, day));
   };
 
   return (
@@ -70,17 +85,17 @@ function ClearDatePicker({
       <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--foreground)]">
         <input
           type="checkbox"
-          checked={!known}
+          checked={!hasDate}
           onChange={(e) => {
             if (e.target.checked) onChange(null);
-            else onChange(value || todayISO());
+            else emit(fallback.year, fallback.month, null);
           }}
           className="size-4 rounded border-[var(--border)] accent-[var(--accent)]"
         />
-        I don’t know the exact date
+        No date
       </label>
 
-      {known ? (
+      {hasDate ? (
         <>
           <div className="grid grid-cols-3 gap-2">
             <div>
@@ -93,9 +108,17 @@ function ClearDatePicker({
               <select
                 id={`${idPrefix}-day`}
                 className={selectClass}
-                value={day}
-                onChange={(e) => setPart({ day: Number(e.target.value) })}
+                value={dayValue}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  emit(
+                    parts.year,
+                    parts.month,
+                    v === "" ? null : Number(v)
+                  );
+                }}
               >
+                <option value="">—</option>
                 {days.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -114,7 +137,13 @@ function ClearDatePicker({
                 id={`${idPrefix}-month`}
                 className={selectClass}
                 value={parts.month}
-                onChange={(e) => setPart({ month: Number(e.target.value) })}
+                onChange={(e) =>
+                  emit(
+                    parts.year,
+                    Number(e.target.value),
+                    precision === "day" ? parts.day : null
+                  )
+                }
               >
                 {months.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -134,7 +163,13 @@ function ClearDatePicker({
                 id={`${idPrefix}-year`}
                 className={selectClass}
                 value={parts.year}
-                onChange={(e) => setPart({ year: Number(e.target.value) })}
+                onChange={(e) =>
+                  emit(
+                    Number(e.target.value),
+                    parts.month,
+                    precision === "day" ? parts.day : null
+                  )
+                }
               >
                 {years.map((y) => (
                   <option key={y} value={y}>
@@ -146,18 +181,178 @@ function ClearDatePicker({
           </div>
           <p className="text-sm text-[var(--foreground)]">
             <span className="text-[var(--muted)]">Selected: </span>
-            <span className="font-medium">
-              {formatDisplayDate(toISODate(parts.year, parts.month, day))}
-            </span>
+            <span className="font-medium">{formatDisplayDate(value)}</span>
           </p>
+          {precision === "month" && (
+            <p className="text-xs text-[var(--muted)]">
+              Day left blank — only month and year are stored.
+            </p>
+          )}
         </>
       ) : (
         <p className="text-sm text-[var(--muted)]">
-          This event will sit on the arrow without a fixed date — move it up or
-          down to place it.
+          Drag the event on the arrow to place it without a date.
         </p>
       )}
     </div>
+  );
+}
+
+function EventRow({
+  event,
+  areas,
+  active,
+  editing,
+  onSelect,
+  onEdit,
+  onDelete,
+  onPatch,
+  onDoneEdit,
+}: {
+  event: TimelineEvent;
+  areas: TimelineAreaDef[];
+  active: boolean;
+  editing: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onPatch: (patch: Partial<TimelineEvent>) => void;
+  onDoneEdit: () => void;
+}) {
+  const controls = useDragControls();
+  const meta = findArea(areas, event.areaId);
+
+  return (
+    <Reorder.Item
+      value={event}
+      id={event.id}
+      dragListener={false}
+      dragControls={controls}
+      as="li"
+      className={cn(
+        "group relative list-none rounded-md py-1.5 pr-1 transition",
+        active && "bg-[var(--accent-soft)]/40"
+      )}
+      whileDrag={{
+        scale: 1.01,
+        boxShadow: "0 8px 24px rgba(18, 20, 26, 0.12)",
+        zIndex: 30,
+        backgroundColor: "var(--surface)",
+      }}
+    >
+      <div className="flex items-start gap-0">
+        <div className="flex w-8 shrink-0 justify-center pt-2">
+          <button
+            type="button"
+            className="cursor-grab touch-none rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] active:cursor-grabbing"
+            aria-label="Drag to reorder"
+            title="Drag up or down"
+            onPointerDown={(e) => controls.start(e)}
+          >
+            <GripVertical className="size-4" />
+          </button>
+        </div>
+
+        {/* Spine gutter: color mark centered on the vertical arrow */}
+        <div
+          className={cn(
+            "relative z-[1] flex shrink-0 items-center justify-center self-stretch",
+            SPINE_GUTTER
+          )}
+        >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-1/2 h-[3px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full sm:w-11"
+            style={{ backgroundColor: meta.color }}
+            title={meta.label}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1 pt-0.5">
+          {editing ? (
+            <div className="space-y-2 pb-1">
+              <Input
+                value={event.title}
+                onChange={(e) => onPatch({ title: e.target.value })}
+                aria-label="Event title"
+                className="h-9"
+              />
+              <select
+                className={selectClass}
+                value={event.areaId}
+                onChange={(e) => onPatch({ areaId: e.target.value })}
+                aria-label="Area"
+              >
+                {areas.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <ClearDatePicker
+                value={event.date}
+                onChange={(iso) => onPatch({ date: iso })}
+                idPrefix={`row-${event.id}`}
+              />
+              <Textarea
+                value={event.note}
+                onChange={(e) => onPatch({ note: e.target.value })}
+                placeholder="Note…"
+                className="min-h-[64px]"
+              />
+              <Button size="sm" variant="secondary" onClick={onDoneEdit}>
+                Done
+              </Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onSelect}
+              className="w-full py-0.5 text-left"
+            >
+              <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                {event.title}
+              </span>
+              <span className="text-[10px] text-[var(--muted)]">
+                {formatShortDate(event.date)} · {meta.label}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <div className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100">
+          {!editing ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded p-1.5 text-[var(--muted)] hover:text-[var(--foreground)]"
+              aria-label="Edit event"
+              title="Edit"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onDoneEdit}
+              className="rounded p-1.5 text-[var(--muted)] hover:text-[var(--foreground)]"
+              aria-label="Close editor"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded p-1.5 text-[var(--muted)] hover:text-red-600"
+            aria-label="Delete event"
+            title="Delete"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      </div>
+    </Reorder.Item>
   );
 }
 
@@ -170,14 +365,16 @@ export function TimelinePage() {
     setTimelineAreas,
   } = useIkigai();
 
-  const [date, setDate] = useState<string | null>(null);
+  const [date, setDate] = useState<string | null>(() =>
+    toMonthDate(todayParts().year, todayParts().month)
+  );
   const [title, setTitle] = useState("");
   const [areaId, setAreaId] = useState("offer");
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<string | "all">("all");
   const [savedFlash, setSavedFlash] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [showAreas, setShowAreas] = useState(false);
   const [newAreaLabel, setNewAreaLabel] = useState("");
@@ -231,29 +428,25 @@ export function TimelinePage() {
     persistEvents([...timeline, event]);
     setTitle("");
     setNote("");
-    setDate(null);
+    setDate(toMonthDate(todayParts().year, todayParts().month));
     setSelectedId(event.id);
-    setEditing(false);
+    setEditingId(null);
   };
 
   const removeEvent = (id: string) => {
     persistEvents(timeline.filter((e) => e.id !== id));
-    if (selectedId === id) {
-      setSelectedId(null);
-      setEditing(false);
-    }
+    if (selectedId === id) setSelectedId(null);
+    if (editingId === id) setEditingId(null);
   };
 
-  const moveEvent = (id: string, direction: -1 | 1) => {
-    // Reorder on the full list so filter doesn't scramble global order
-    persistEvents(moveEventOrder(timeline, id, direction));
-  };
-
-  const updateSelected = (patch: Partial<TimelineEvent>) => {
-    if (!selectedId) return;
+  const patchEvent = (id: string, patch: Partial<TimelineEvent>) => {
     persistEvents(
-      timeline.map((e) => (e.id === selectedId ? { ...e, ...patch } : e))
+      timeline.map((e) => (e.id === id ? { ...e, ...patch } : e))
     );
+  };
+
+  const onReorder = (nextFiltered: TimelineEvent[]) => {
+    persistEvents(applySubsetOrder(timeline, nextFiltered));
   };
 
   const addArea = () => {
@@ -297,7 +490,10 @@ export function TimelinePage() {
     }
   };
 
-  const selected = sorted.find((e) => e.id === selectedId) ?? null;
+  const selected =
+    editingId == null
+      ? (sorted.find((e) => e.id === selectedId) ?? null)
+      : null;
 
   if (!ready) {
     return (
@@ -319,8 +515,8 @@ export function TimelinePage() {
             Chronology
           </h1>
           <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
-            From January 2025 downward. Colored marks sit on the arrow — move
-            events up or down to place them.
+            From January 2025 downward. Color marks sit on the arrow — drag
+            events to place them. Day is optional.
           </p>
         </div>
         <span
@@ -529,7 +725,9 @@ export function TimelinePage() {
           Add event
         </h2>
         <div className="mt-3">
-          <p className="mb-1 text-xs text-[var(--muted)]">Date (optional)</p>
+          <p className="mb-1 text-xs text-[var(--muted)]">
+            Date — day optional (leave as — for month &amp; year only)
+          </p>
           <ClearDatePicker value={date} onChange={setDate} idPrefix="add" />
         </div>
         <div className="mt-3">
@@ -590,7 +788,7 @@ export function TimelinePage() {
         </Button>
       </section>
 
-      {/* Vertical arrow with centered color marks */}
+      {/* Vertical arrow — marks centered on spine; drag to reorder */}
       <section className="relative">
         <div className="mb-4 flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
           <span>January 2025</span>
@@ -599,120 +797,58 @@ export function TimelinePage() {
         </div>
 
         <div className="relative">
-          {/* Spine — centered under the color marks (mark is w-10 / w-14; spine at 20px / 28px) */}
+          {/* Spine centered in the gutter: grip w-8 + half of gutter (w-12 / w-14) */}
           <div
             aria-hidden
-            className="absolute top-0 bottom-6 left-5 w-px -translate-x-1/2 bg-[var(--border)] sm:left-7"
+            className="pointer-events-none absolute top-0 bottom-6 left-[calc(2rem+1.5rem)] w-px -translate-x-1/2 bg-[var(--border)] sm:left-[calc(2rem+1.75rem)]"
           />
           <div
             aria-hidden
-            className="absolute bottom-0 left-5 -translate-x-1/2 text-[var(--accent)] sm:left-7"
+            className="pointer-events-none absolute bottom-0 left-[calc(2rem+1.5rem)] -translate-x-1/2 text-[var(--accent)] sm:left-[calc(2rem+1.75rem)]"
           >
             <ArrowDown className="size-4" strokeWidth={2.25} />
           </div>
 
           {filtered.length === 0 ? (
-            <p className="py-8 pl-12 text-sm text-[var(--muted)] sm:pl-16">
-              No events yet. Add one above — date is optional.
+            <p className="py-8 pl-16 text-sm text-[var(--muted)]">
+              No events yet. Add one above — day is optional.
             </p>
           ) : (
-            <ul className="space-y-1 pb-10">
-              {filtered.map((event, i) => {
-                const meta = findArea(timelineAreas, event.areaId);
-                const active = selectedId === event.id;
-                const fullIndex = sorted.findIndex((e) => e.id === event.id);
-                const canUp = fullIndex > 0;
-                const canDown = fullIndex >= 0 && fullIndex < sorted.length - 1;
-
-                return (
-                  <motion.li
-                    key={event.id}
-                    layout
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i * 0.02, 0.25) }}
-                    className={cn(
-                      "group relative flex items-center gap-2 rounded-md py-2 pr-1 transition",
-                      active && "bg-[var(--accent-soft)]/40"
-                    )}
-                  >
-                    {/* Color mark centered on the spine */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedId((id) =>
-                          id === event.id ? null : event.id
-                        );
-                        setEditing(false);
-                      }}
-                      className="relative z-[1] flex w-10 shrink-0 items-center justify-center sm:w-14"
-                      title={meta.label}
-                      aria-label={`${event.title}, ${meta.label}`}
-                    >
-                      <span
-                        className="h-[3px] w-10 rounded-full sm:w-14"
-                        style={{ backgroundColor: meta.color }}
-                      />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedId((id) =>
-                          id === event.id ? null : event.id
-                        );
-                        setEditing(false);
-                      }}
-                      className="min-w-0 flex-1 py-0.5 text-left"
-                    >
-                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">
-                        {event.title}
-                      </span>
-                      <span className="text-[10px] text-[var(--muted)]">
-                        {formatShortDate(event.date)} · {meta.label}
-                      </span>
-                    </button>
-
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => moveEvent(event.id, -1)}
-                        disabled={!canUp}
-                        className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
-                        aria-label="Move up"
-                        title="Move up"
-                      >
-                        <ChevronUp className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveEvent(event.id, 1)}
-                        disabled={!canDown}
-                        className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
-                        aria-label="Move down"
-                        title="Move down"
-                      >
-                        <ChevronDown className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeEvent(event.id)}
-                        className="rounded p-1 text-[var(--muted)] hover:text-red-600"
-                        aria-label="Delete event"
-                        title="Delete"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </ul>
+            <Reorder.Group
+              axis="y"
+              values={filtered}
+              onReorder={onReorder}
+              className="relative z-[1] space-y-0.5 pb-10"
+              as="ul"
+            >
+              {filtered.map((event) => (
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  areas={timelineAreas}
+                  active={selectedId === event.id || editingId === event.id}
+                  editing={editingId === event.id}
+                  onSelect={() => {
+                    setSelectedId((id) =>
+                      id === event.id ? null : event.id
+                    );
+                    setEditingId(null);
+                  }}
+                  onEdit={() => {
+                    setEditingId(event.id);
+                    setSelectedId(event.id);
+                  }}
+                  onDelete={() => removeEvent(event.id)}
+                  onPatch={(patch) => patchEvent(event.id, patch)}
+                  onDoneEdit={() => setEditingId(null)}
+                />
+              ))}
+            </Reorder.Group>
           )}
         </div>
       </section>
 
-      {/* Selected event detail / edit */}
+      {/* Read-only detail when selected but not inline-editing */}
       <AnimatePresence>
         {selected && (
           <motion.section
@@ -723,108 +859,48 @@ export function TimelinePage() {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                {editing ? (
-                  <div className="space-y-3">
-                    <ClearDatePicker
-                      value={selected.date}
-                      onChange={(iso) => updateSelected({ date: iso })}
-                      idPrefix="edit"
-                    />
-                    <div>
-                      <label className="mb-1 block text-xs text-[var(--muted)]">
-                        Area
-                      </label>
-                      <select
-                        className={selectClass}
-                        value={selected.areaId}
-                        onChange={(e) =>
-                          updateSelected({ areaId: e.target.value })
-                        }
-                      >
-                        {timelineAreas.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <Input
-                      value={selected.title}
-                      onChange={(e) => updateSelected({ title: e.target.value })}
-                      aria-label="Event title"
-                    />
-                    <Textarea
-                      value={selected.note}
-                      onChange={(e) => updateSelected({ note: e.target.value })}
-                      placeholder="Note…"
-                      className="min-h-[80px]"
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setEditing(false)}
-                    >
-                      Done
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-[3px] w-10 rounded-full"
+                    style={{
+                      backgroundColor: findArea(
+                        timelineAreas,
+                        selected.areaId
+                      ).color,
+                    }}
+                  />
+                  <p
+                    className="text-xs font-medium"
+                    style={{
+                      color: findArea(timelineAreas, selected.areaId).color,
+                    }}
+                  >
+                    {findArea(timelineAreas, selected.areaId).label}
+                  </p>
+                </div>
+                <h3 className="mt-2 font-display text-lg font-semibold text-[var(--foreground)]">
+                  {selected.title}
+                </h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {formatDisplayDate(selected.date)}
+                </p>
+                {selected.note ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+                    {selected.note}
+                  </p>
                 ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-[3px] w-10 rounded-full"
-                        style={{
-                          backgroundColor: findArea(
-                            timelineAreas,
-                            selected.areaId
-                          ).color,
-                        }}
-                      />
-                      <p
-                        className="text-xs font-medium"
-                        style={{
-                          color: findArea(timelineAreas, selected.areaId).color,
-                        }}
-                      >
-                        {findArea(timelineAreas, selected.areaId).label}
-                      </p>
-                    </div>
-                    <h3 className="mt-2 font-display text-lg font-semibold text-[var(--foreground)]">
-                      {selected.title}
-                    </h3>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {formatDisplayDate(selected.date)}
-                    </p>
-                    {selected.note ? (
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-                        {selected.note}
-                      </p>
-                    ) : (
-                      <p className="mt-3 text-sm text-[var(--muted)]">No note.</p>
-                    )}
-                  </>
+                  <p className="mt-3 text-sm text-[var(--muted)]">No note.</p>
                 )}
               </div>
               <div className="flex shrink-0 gap-1">
-                {!editing && (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    className="rounded p-1.5 text-[var(--muted)] transition hover:text-[var(--foreground)]"
-                    aria-label="Edit event"
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                )}
-                {editing && (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(false)}
-                    className="rounded p-1.5 text-[var(--muted)] transition hover:text-[var(--foreground)]"
-                    aria-label="Close editor"
-                  >
-                    <X className="size-4" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setEditingId(selected.id)}
+                  className="rounded p-1.5 text-[var(--muted)] transition hover:text-[var(--foreground)]"
+                  aria-label="Edit event"
+                >
+                  <Pencil className="size-4" />
+                </button>
                 <button
                   type="button"
                   onClick={() => removeEvent(selected.id)}

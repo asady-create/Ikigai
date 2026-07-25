@@ -526,7 +526,7 @@ export function exportMapMarkdown(): string {
       const when = e.date ?? "date unknown";
       lines.push(
         `- ${when} · [${label}] ${e.title}${e.note ? ` — ${e.note}` : ""}`
-      );
+      ); // date may be YYYY-MM or YYYY-MM-DD
     }
     lines.push("");
   }
