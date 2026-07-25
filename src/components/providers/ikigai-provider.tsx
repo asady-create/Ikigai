@@ -14,6 +14,7 @@ import type {
   InsightIdea,
   Note,
   PurposeMap,
+  TimelineAreaDef,
   TimelineEvent,
 } from "@/lib/types";
 import {
@@ -24,9 +25,17 @@ import {
   saveMap as storageSaveMap,
   saveNote as storageSaveNote,
   saveTimeline as storageSaveTimeline,
+  saveTimelineAreas as storageSaveTimelineAreas,
 } from "@/lib/storage";
+import { DEFAULT_TIMELINE_AREAS } from "@/lib/timeline";
 
-const EMPTY: AppData = { map: null, notes: [], insights: [], timeline: [] };
+const EMPTY: AppData = {
+  map: null,
+  notes: [],
+  insights: [],
+  timeline: [],
+  timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+};
 
 interface IkigaiStore {
   ready: boolean;
@@ -34,6 +43,7 @@ interface IkigaiStore {
   notes: Note[];
   insights: InsightIdea[];
   timeline: TimelineEvent[];
+  timelineAreas: TimelineAreaDef[];
   diskPath: string | null;
   refresh: () => Promise<void>;
   upsertMap: (map: PurposeMap) => void;
@@ -41,6 +51,7 @@ interface IkigaiStore {
   removeNote: (id: string) => void;
   setInsights: (insights: InsightIdea[]) => void;
   setTimeline: (timeline: TimelineEvent[]) => void;
+  setTimelineAreas: (areas: TimelineAreaDef[]) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -129,6 +140,12 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setData({ ...next });
   }, []);
 
+  const setTimelineAreas = useCallback((areas: TimelineAreaDef[]) => {
+    if (!readyRef.current) return;
+    const next = storageSaveTimelineAreas(areas);
+    setData({ ...next });
+  }, []);
+
   const notes = [...data.notes].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -138,6 +155,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
   );
 
   const timeline = [...(data.timeline ?? [])];
+  const timelineAreas = [...(data.timelineAreas ?? [])];
 
   return (
     <IkigaiContext.Provider
@@ -147,6 +165,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         notes,
         insights,
         timeline,
+        timelineAreas,
         diskPath,
         refresh,
         upsertMap,
@@ -154,6 +173,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         removeNote,
         setInsights,
         setTimeline,
+        setTimelineAreas,
       }}
     >
       {children}

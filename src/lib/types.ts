@@ -67,26 +67,20 @@ export interface InsightIdea {
   createdAt: string;
 }
 
-/** Timeline event area — color-coded on the chrono view. */
-export const TIMELINE_AREAS = [
-  "love",
-  "goodAt",
-  "need",
-  "reward",
-  "offer",
-  "skills",
-  "values",
-  "other",
-] as const;
-
-export type TimelineArea = (typeof TIMELINE_AREAS)[number];
+/** User-defined (or default) timeline area with a color. */
+export interface TimelineAreaDef {
+  id: string;
+  label: string;
+  color: string;
+}
 
 export interface TimelineEvent {
   id: string;
   /** YYYY-MM-DD */
   date: string;
   title: string;
-  area: TimelineArea;
+  /** References TimelineAreaDef.id */
+  areaId: string;
   note: string;
   createdAt: string;
 }
@@ -96,4 +90,5 @@ export interface AppData {
   notes: Note[];
   insights: InsightIdea[];
   timeline: TimelineEvent[];
+  timelineAreas: TimelineAreaDef[];
 }

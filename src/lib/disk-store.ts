@@ -6,6 +6,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { AppData } from "./types";
+import { DEFAULT_TIMELINE_AREAS } from "./timeline";
 
 export const DISK_FILENAME = "ikigai-store.json";
 
@@ -17,7 +18,13 @@ export function getStorePath(): string {
   return path.join(getDataDir(), DISK_FILENAME);
 }
 
-const EMPTY: AppData = { map: null, notes: [], insights: [], timeline: [] };
+const EMPTY: AppData = {
+  map: null,
+  notes: [],
+  insights: [],
+  timeline: [],
+  timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+};
 
 export async function readDiskStore(): Promise<AppData | null> {
   try {
@@ -30,6 +37,9 @@ export async function readDiskStore(): Promise<AppData | null> {
       notes: parsed.notes ?? [],
       insights: parsed.insights ?? [],
       timeline: parsed.timeline ?? [],
+      timelineAreas:
+        parsed.timelineAreas ??
+        DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;

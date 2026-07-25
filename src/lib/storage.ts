@@ -12,13 +12,18 @@ import type {
   Note,
   NoteTag,
   PurposeMap,
+  TimelineAreaDef,
   TimelineEvent,
 } from "./types";
 import { NOTE_TAGS } from "./types";
 import { createEmptyMap, normalizeMap } from "./synthesis";
 import { isNoteTag } from "./note-tags";
 import { normalizeInsights } from "./insights";
-import { normalizeTimelineEvent } from "./timeline";
+import {
+  DEFAULT_TIMELINE_AREAS,
+  normalizeTimelineAreas,
+  normalizeTimelineEvent,
+} from "./timeline";
 
 const STORAGE_KEY = "ikigai:v2";
 const SNAPSHOT_KEY = "ikigai:v2:snapshot";
@@ -30,6 +35,7 @@ const DEFAULT_DATA: AppData = {
   notes: [],
   insights: [],
   timeline: [],
+  timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
 };
 
 function isBrowser() {
@@ -53,14 +59,19 @@ function normalizeNote(
 
 export function normalizeAppData(raw: Partial<AppData> | null): AppData {
   if (!raw) return structuredClone(DEFAULT_DATA);
+  const timelineAreas = normalizeTimelineAreas(raw.timelineAreas);
   return {
     ...structuredClone(DEFAULT_DATA),
     ...raw,
     map: raw.map ? normalizeMap(raw.map) : null,
     notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
     insights: normalizeInsights(raw.insights),
+    timelineAreas,
     timeline: (raw.timeline ?? []).map((e) =>
-      normalizeTimelineEvent(e as TimelineEvent)
+      normalizeTimelineEvent(
+        e as TimelineEvent & { area?: string },
+        timelineAreas
+      )
     ),
   };
 }
@@ -171,6 +182,7 @@ function migrateLegacy(): AppData | null {
       notes,
       insights: [],
       timeline: [],
+      timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
     };
     saveAppDataLocal(data, { force: true });
     window.localStorage.removeItem(LEGACY_KEY);
@@ -413,7 +425,26 @@ export function saveInsights(insights: InsightIdea[]): AppData {
 
 export function saveTimeline(timeline: TimelineEvent[]): AppData {
   const data = loadAppDataLocal();
-  data.timeline = timeline.map((e) => normalizeTimelineEvent(e));
+  const areas = normalizeTimelineAreas(data.timelineAreas);
+  data.timelineAreas = areas;
+  data.timeline = timeline.map((e) => normalizeTimelineEvent(e, areas));
+  saveAppData(data);
+  return data;
+}
+
+export function saveTimelineAreas(areas: TimelineAreaDef[]): AppData {
+  const data = loadAppDataLocal();
+  const nextAreas = normalizeTimelineAreas(areas);
+  data.timelineAreas = nextAreas;
+  // Remap events whose area was deleted → first area
+  const ids = new Set(nextAreas.map((a) => a.id));
+  const fallback = nextAreas[0]?.id ?? "other";
+  data.timeline = (data.timeline ?? []).map((e) =>
+    normalizeTimelineEvent(
+      { ...e, areaId: ids.has(e.areaId) ? e.areaId : fallback },
+      nextAreas
+    )
+  );
   saveAppData(data);
   return data;
 }
@@ -483,9 +514,14 @@ export function exportMapMarkdown(): string {
   }
 
   if ((timeline ?? []).length > 0) {
+    const areas = loadAppDataLocal().timelineAreas;
     lines.push("## Timeline", "");
     for (const e of [...timeline].sort((a, b) => a.date.localeCompare(b.date))) {
-      lines.push(`- ${e.date} · [${e.area}] ${e.title}${e.note ? ` — ${e.note}` : ""}`);
+      const label =
+        areas.find((a) => a.id === e.areaId)?.label ?? e.areaId;
+      lines.push(
+        `- ${e.date} · [${label}] ${e.title}${e.note ? ` — ${e.note}` : ""}`
+      );
     }
     lines.push("");
   }

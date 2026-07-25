@@ -32,7 +32,13 @@ function isEmpty(data: AppData): boolean {
 export async function GET() {
   const data = await readDiskStore();
   return NextResponse.json({
-    data: data ?? { map: null, notes: [], insights: [], timeline: [] },
+    data: data ?? {
+      map: null,
+      notes: [],
+      insights: [],
+      timeline: [],
+      timelineAreas: [],
+    },
     path: getStorePath(),
     exists: data !== null,
   });
@@ -51,6 +57,7 @@ async function save(req: Request) {
     notes: body.notes ?? [],
     insights: body.insights ?? [],
     timeline: body.timeline ?? [],
+    timelineAreas: body.timelineAreas ?? [],
   };
 
   // Never let an empty payload wipe a rich disk file
