@@ -1,18 +1,24 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import {
-  AnimatePresence,
-  Reorder,
-  motion,
-  useDragControls,
-} from "framer-motion";
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowDown,
   Check,
@@ -214,8 +220,6 @@ function EventRow({
   onDelete,
   onPatch,
   onDoneEdit,
-  onDragStart,
-  onDragEnd,
 }: {
   event: TimelineEvent;
   areas: TimelineAreaDef[];
@@ -226,74 +230,69 @@ function EventRow({
   onDelete: () => void;
   onPatch: (patch: Partial<TimelineEvent>) => void;
   onDoneEdit: () => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
 }) {
-  const controls = useDragControls();
   const meta = findArea(areas, event.areaId);
-
-  const startDrag = (e: ReactPointerEvent) => {
-    if (editing) return;
-    controls.start(e);
-  };
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: event.id, disabled: editing });
 
   return (
-    <Reorder.Item
-      value={event.id}
-      id={event.id}
-      dragListener={false}
-      dragControls={controls}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      as="li"
-      className={cn(
-        "group relative list-none rounded-md py-1.5 pr-1 transition",
-        active && "bg-[var(--accent-soft)]/40",
-        !editing && "cursor-grab active:cursor-grabbing"
-      )}
-      whileDrag={{
-        scale: 1.02,
-        boxShadow: "0 8px 24px rgba(18, 20, 26, 0.14)",
-        zIndex: 30,
-        backgroundColor: "var(--surface)",
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 40 : undefined,
       }}
+      className={cn(
+        "group relative list-none rounded-md bg-[var(--background)] py-1.5 pr-1",
+        active && "bg-[var(--accent-soft)]/40",
+        isDragging && "bg-[var(--surface)] shadow-lg ring-1 ring-[var(--border)]"
+      )}
     >
       <div className="flex items-start gap-0">
         <div className="flex w-8 shrink-0 justify-center pt-2">
           <button
             type="button"
-            className="cursor-grab touch-none rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] active:cursor-grabbing"
+            className={cn(
+              "rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]",
+              editing
+                ? "cursor-not-allowed opacity-30"
+                : "cursor-grab touch-none active:cursor-grabbing"
+            )}
             aria-label="Drag to reorder"
             title="Drag up or down"
-            onPointerDown={startDrag}
+            disabled={editing}
+            {...attributes}
+            {...listeners}
           >
             <GripVertical className="size-4" />
           </button>
         </div>
 
-        {/* Spine gutter: color mark centered on the vertical arrow — also a drag handle */}
+        {/* Spine gutter: color mark centered on the vertical arrow */}
         <div
           className={cn(
-            "relative z-[1] flex shrink-0 touch-none items-center justify-center self-stretch",
-            SPINE_GUTTER,
-            !editing && "cursor-grab active:cursor-grabbing"
+            "relative z-[1] flex shrink-0 items-center justify-center self-stretch",
+            SPINE_GUTTER
           )}
-          onPointerDown={startDrag}
-          title={`${meta.label} — drag to reorder`}
         >
           <span
             aria-hidden
             className="pointer-events-none absolute top-1/2 left-1/2 h-[3px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full sm:w-11"
             style={{ backgroundColor: meta.color }}
+            title={meta.label}
           />
         </div>
 
         <div className="min-w-0 flex-1 pt-0.5">
           {editing ? (
-            <div
-              className="space-y-2 pb-1"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
+            <div className="space-y-2 pb-1">
               <Input
                 value={event.title}
                 onChange={(e) => onPatch({ title: e.target.value })}
@@ -328,18 +327,10 @@ function EventRow({
               </Button>
             </div>
           ) : (
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               onClick={onSelect}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect();
-                }
-              }}
-              onPointerDown={startDrag}
-              className="w-full touch-none py-0.5 text-left"
+              className="w-full py-0.5 text-left"
             >
               <span className="block truncate text-sm font-medium text-[var(--foreground)]">
                 {event.title}
@@ -347,14 +338,11 @@ function EventRow({
               <span className="text-[10px] text-[var(--muted)]">
                 {formatShortDate(event.date)} · {meta.label}
               </span>
-            </div>
+            </button>
           )}
         </div>
 
-        <div
-          className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
+        <div className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100">
           {!editing ? (
             <button
               type="button"
@@ -386,7 +374,7 @@ function EventRow({
           </button>
         </div>
       </div>
-    </Reorder.Item>
+    </li>
   );
 }
 
@@ -409,13 +397,18 @@ export function TimelinePage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  /** Stable id list for Reorder — updated live while dragging. */
+  /** Local order while rendering; kept in sync with filtered timeline. */
   const [orderIds, setOrderIds] = useState<string[]>([]);
-  const orderIdsRef = useRef(orderIds);
-  orderIdsRef.current = orderIds;
-  const timelineRef = useRef(timeline);
-  timelineRef.current = timeline;
-  const draggingRef = useRef(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      // Require a small movement so clicks still open/edit
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const [showAreas, setShowAreas] = useState(false);
   const [newAreaLabel, setNewAreaLabel] = useState("");
@@ -440,9 +433,8 @@ export function TimelinePage() {
 
   const filteredIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
 
-  // Keep Reorder ids in sync when data/filter changes (not mid-drag).
+  // Sync list order from saved timeline whenever the filtered set changes.
   useEffect(() => {
-    if (draggingRef.current) return;
     setOrderIds(filteredIds);
   }, [filteredIds]);
 
@@ -500,20 +492,17 @@ export function TimelinePage() {
     );
   };
 
-  const onReorderIds = (nextIds: string[]) => {
-    orderIdsRef.current = nextIds;
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = orderIds.indexOf(String(active.id));
+    const newIndex = orderIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const nextIds = arrayMove(orderIds, oldIndex, newIndex);
     setOrderIds(nextIds);
-  };
-
-  const handleDragStart = () => {
-    draggingRef.current = true;
-  };
-
-  const handleDragEnd = () => {
-    draggingRef.current = false;
-    persistEvents(
-      applySubsetOrderByIds(timelineRef.current, orderIdsRef.current)
-    );
+    persistEvents(applySubsetOrderByIds(timeline, nextIds));
   };
 
   const addArea = () => {
@@ -583,7 +572,7 @@ export function TimelinePage() {
           </h1>
           <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
             From January 2025 downward. Color marks sit on the arrow — drag
-            events to place them. Day is optional.
+            the grip (⋮⋮) to reorder. Day is optional.
           </p>
         </div>
         <span
@@ -878,45 +867,51 @@ export function TimelinePage() {
 
           {orderIds.length === 0 ? (
             <p className="py-8 pl-16 text-sm text-[var(--muted)]">
-              No events yet. Add one above — day is optional.
+              No events yet. Add one above — day is optional. Drag the grip to
+              reorder.
             </p>
           ) : (
-            <Reorder.Group
-              axis="y"
-              values={orderIds}
-              onReorder={onReorderIds}
-              className="relative z-[1] space-y-0.5 pb-10"
-              as="ul"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              {orderIds.map((id) => {
-                const event = eventsById.get(id);
-                if (!event) return null;
-                return (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    areas={timelineAreas}
-                    active={selectedId === event.id || editingId === event.id}
-                    editing={editingId === event.id}
-                    onSelect={() => {
-                      setSelectedId((cur) =>
-                        cur === event.id ? null : event.id
-                      );
-                      setEditingId(null);
-                    }}
-                    onEdit={() => {
-                      setEditingId(event.id);
-                      setSelectedId(event.id);
-                    }}
-                    onDelete={() => removeEvent(event.id)}
-                    onPatch={(patch) => patchEvent(event.id, patch)}
-                    onDoneEdit={() => setEditingId(null)}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  />
-                );
-              })}
-            </Reorder.Group>
+              <SortableContext
+                items={orderIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="relative z-[1] space-y-0.5 pb-10">
+                  {orderIds.map((id) => {
+                    const event = eventsById.get(id);
+                    if (!event) return null;
+                    return (
+                      <EventRow
+                        key={event.id}
+                        event={event}
+                        areas={timelineAreas}
+                        active={
+                          selectedId === event.id || editingId === event.id
+                        }
+                        editing={editingId === event.id}
+                        onSelect={() => {
+                          setSelectedId((cur) =>
+                            cur === event.id ? null : event.id
+                          );
+                          setEditingId(null);
+                        }}
+                        onEdit={() => {
+                          setEditingId(event.id);
+                          setSelectedId(event.id);
+                        }}
+                        onDelete={() => removeEvent(event.id)}
+                        onPatch={(patch) => patchEvent(event.id, patch)}
+                        onDoneEdit={() => setEditingId(null)}
+                      />
+                    );
+                  })}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </section>
