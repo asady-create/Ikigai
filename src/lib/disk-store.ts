@@ -17,7 +17,7 @@ export function getStorePath(): string {
   return path.join(getDataDir(), DISK_FILENAME);
 }
 
-const EMPTY: AppData = { map: null, notes: [], insights: [] };
+const EMPTY: AppData = { map: null, notes: [], insights: [], timeline: [] };
 
 export async function readDiskStore(): Promise<AppData | null> {
   try {
@@ -29,6 +29,7 @@ export async function readDiskStore(): Promise<AppData | null> {
       map: parsed.map ?? null,
       notes: parsed.notes ?? [],
       insights: parsed.insights ?? [],
+      timeline: parsed.timeline ?? [],
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;

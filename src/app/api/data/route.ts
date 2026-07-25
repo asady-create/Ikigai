@@ -24,14 +24,15 @@ function isEmpty(data: AppData): boolean {
       return false;
     }
   }
-  if (data.notes?.length || data.insights?.length) return false;
+  if (data.notes?.length || data.insights?.length || data.timeline?.length)
+    return false;
   return true;
 }
 
 export async function GET() {
   const data = await readDiskStore();
   return NextResponse.json({
-    data: data ?? { map: null, notes: [], insights: [] },
+    data: data ?? { map: null, notes: [], insights: [], timeline: [] },
     path: getStorePath(),
     exists: data !== null,
   });
@@ -49,6 +50,7 @@ async function save(req: Request) {
     map: body.map ?? null,
     notes: body.notes ?? [],
     insights: body.insights ?? [],
+    timeline: body.timeline ?? [],
   };
 
   // Never let an empty payload wipe a rich disk file

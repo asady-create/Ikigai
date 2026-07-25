@@ -12,11 +12,13 @@ import type {
   Note,
   NoteTag,
   PurposeMap,
+  TimelineEvent,
 } from "./types";
 import { NOTE_TAGS } from "./types";
 import { createEmptyMap, normalizeMap } from "./synthesis";
 import { isNoteTag } from "./note-tags";
 import { normalizeInsights } from "./insights";
+import { normalizeTimelineEvent } from "./timeline";
 
 const STORAGE_KEY = "ikigai:v2";
 const SNAPSHOT_KEY = "ikigai:v2:snapshot";
@@ -27,6 +29,7 @@ const DEFAULT_DATA: AppData = {
   map: null,
   notes: [],
   insights: [],
+  timeline: [],
 };
 
 function isBrowser() {
@@ -56,6 +59,9 @@ export function normalizeAppData(raw: Partial<AppData> | null): AppData {
     map: raw.map ? normalizeMap(raw.map) : null,
     notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
     insights: normalizeInsights(raw.insights),
+    timeline: (raw.timeline ?? []).map((e) =>
+      normalizeTimelineEvent(e as TimelineEvent)
+    ),
   };
 }
 
@@ -93,6 +99,9 @@ export function contentScore(data: AppData): number {
     if (n.content?.trim()) score += Math.min(n.content.trim().length, 200);
   }
   score += data.insights.length * 15;
+  for (const e of data.timeline ?? []) {
+    if (e.title?.trim()) score += Math.min(e.title.trim().length, 80) + 10;
+  }
   return score;
 }
 
@@ -161,6 +170,7 @@ function migrateLegacy(): AppData | null {
       map: parsed.canvas ? map : null,
       notes,
       insights: [],
+      timeline: [],
     };
     saveAppDataLocal(data, { force: true });
     window.localStorage.removeItem(LEGACY_KEY);
@@ -401,8 +411,15 @@ export function saveInsights(insights: InsightIdea[]): AppData {
   return data;
 }
 
+export function saveTimeline(timeline: TimelineEvent[]): AppData {
+  const data = loadAppDataLocal();
+  data.timeline = timeline.map((e) => normalizeTimelineEvent(e));
+  saveAppData(data);
+  return data;
+}
+
 export function exportMapMarkdown(): string {
-  const { map, notes, insights } = loadAppDataLocal();
+  const { map, notes, insights, timeline } = loadAppDataLocal();
   const lines = [
     "# Ikigai 2.0",
     "",
@@ -463,6 +480,14 @@ export function exportMapMarkdown(): string {
         ""
       );
     }
+  }
+
+  if ((timeline ?? []).length > 0) {
+    lines.push("## Timeline", "");
+    for (const e of [...timeline].sort((a, b) => a.date.localeCompare(b.date))) {
+      lines.push(`- ${e.date} · [${e.area}] ${e.title}${e.note ? ` — ${e.note}` : ""}`);
+    }
+    lines.push("");
   }
 
   return lines.join("\n");

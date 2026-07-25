@@ -9,6 +9,7 @@ import {
   Wrench,
   NotebookPen,
   GitMerge,
+  History,
   Menu,
   X,
 } from "lucide-react";
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/map", label: "Map", icon: Map },
   { href: "/skills", label: "Skills", icon: Wrench },
   { href: "/insights", label: "Insights", icon: GitMerge },
+  { href: "/timeline", label: "Timeline", icon: History },
   { href: "/notes", label: "Notes", icon: NotebookPen },
 ];
 

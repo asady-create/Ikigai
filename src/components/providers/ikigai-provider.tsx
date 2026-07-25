@@ -9,7 +9,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AppData, InsightIdea, Note, PurposeMap } from "@/lib/types";
+import type {
+  AppData,
+  InsightIdea,
+  Note,
+  PurposeMap,
+  TimelineEvent,
+} from "@/lib/types";
 import {
   deleteNote as storageDeleteNote,
   flushAppData,
@@ -17,21 +23,24 @@ import {
   saveInsights as storageSaveInsights,
   saveMap as storageSaveMap,
   saveNote as storageSaveNote,
+  saveTimeline as storageSaveTimeline,
 } from "@/lib/storage";
 
-const EMPTY: AppData = { map: null, notes: [], insights: [] };
+const EMPTY: AppData = { map: null, notes: [], insights: [], timeline: [] };
 
 interface IkigaiStore {
   ready: boolean;
   data: AppData;
   notes: Note[];
   insights: InsightIdea[];
+  timeline: TimelineEvent[];
   diskPath: string | null;
   refresh: () => Promise<void>;
   upsertMap: (map: PurposeMap) => void;
   upsertNote: (note: Note) => void;
   removeNote: (id: string) => void;
   setInsights: (insights: InsightIdea[]) => void;
+  setTimeline: (timeline: TimelineEvent[]) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -114,6 +123,12 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setData({ ...next });
   }, []);
 
+  const setTimeline = useCallback((timeline: TimelineEvent[]) => {
+    if (!readyRef.current) return;
+    const next = storageSaveTimeline(timeline);
+    setData({ ...next });
+  }, []);
+
   const notes = [...data.notes].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -122,6 +137,8 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
+  const timeline = [...(data.timeline ?? [])];
+
   return (
     <IkigaiContext.Provider
       value={{
@@ -129,12 +146,14 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         data,
         notes,
         insights,
+        timeline,
         diskPath,
         refresh,
         upsertMap,
         upsertNote,
         removeNote,
         setInsights,
+        setTimeline,
       }}
     >
       {children}

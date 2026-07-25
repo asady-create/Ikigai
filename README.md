@@ -44,6 +44,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `/map` | Four questions + synthesis |
 | `/skills` | Skills you have / lack |
 | `/insights` | Connection view + ideas |
+| `/timeline` | Chronology from Jan 2025 |
 | `/notes` | Tagged mini journal |
 
 ## Scripts
