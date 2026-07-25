@@ -276,11 +276,24 @@ export function applySubsetOrder(
   all: TimelineEvent[],
   orderedSubset: TimelineEvent[]
 ): TimelineEvent[] {
-  const sorted = sortTimeline(all);
-  const ids = new Set(orderedSubset.map((e) => e.id));
-  let i = 0;
-  const merged = sorted.map((e) =>
-    ids.has(e.id) ? orderedSubset[i++]! : e
+  return applySubsetOrderByIds(
+    all,
+    orderedSubset.map((e) => e.id)
   );
+}
+
+/** Same as applySubsetOrder, but takes ids (stable for drag-and-drop). */
+export function applySubsetOrderByIds(
+  all: TimelineEvent[],
+  orderedIds: string[]
+): TimelineEvent[] {
+  const sorted = sortTimeline(all);
+  const byId = new Map(sorted.map((e) => [e.id, e]));
+  const ordered = orderedIds
+    .map((id) => byId.get(id))
+    .filter((e): e is TimelineEvent => Boolean(e));
+  const idSet = new Set(ordered.map((e) => e.id));
+  let i = 0;
+  const merged = sorted.map((e) => (idSet.has(e.id) ? ordered[i++]! : e));
   return reindexOrders(merged);
 }

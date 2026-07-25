@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   AnimatePresence,
   Reorder,
@@ -21,7 +27,7 @@ import { useIkigai } from "@/components/providers/ikigai-provider";
 import type { TimelineAreaDef, TimelineEvent } from "@/lib/types";
 import {
   AREA_COLOR_PRESETS,
-  applySubsetOrder,
+  applySubsetOrderByIds,
   datePrecision,
   daysInMonth,
   findArea,
@@ -208,6 +214,8 @@ function EventRow({
   onDelete,
   onPatch,
   onDoneEdit,
+  onDragStart,
+  onDragEnd,
 }: {
   event: TimelineEvent;
   areas: TimelineAreaDef[];
@@ -218,24 +226,34 @@ function EventRow({
   onDelete: () => void;
   onPatch: (patch: Partial<TimelineEvent>) => void;
   onDoneEdit: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
   const controls = useDragControls();
   const meta = findArea(areas, event.areaId);
 
+  const startDrag = (e: ReactPointerEvent) => {
+    if (editing) return;
+    controls.start(e);
+  };
+
   return (
     <Reorder.Item
-      value={event}
+      value={event.id}
       id={event.id}
       dragListener={false}
       dragControls={controls}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       as="li"
       className={cn(
         "group relative list-none rounded-md py-1.5 pr-1 transition",
-        active && "bg-[var(--accent-soft)]/40"
+        active && "bg-[var(--accent-soft)]/40",
+        !editing && "cursor-grab active:cursor-grabbing"
       )}
       whileDrag={{
-        scale: 1.01,
-        boxShadow: "0 8px 24px rgba(18, 20, 26, 0.12)",
+        scale: 1.02,
+        boxShadow: "0 8px 24px rgba(18, 20, 26, 0.14)",
         zIndex: 30,
         backgroundColor: "var(--surface)",
       }}
@@ -247,30 +265,35 @@ function EventRow({
             className="cursor-grab touch-none rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] active:cursor-grabbing"
             aria-label="Drag to reorder"
             title="Drag up or down"
-            onPointerDown={(e) => controls.start(e)}
+            onPointerDown={startDrag}
           >
             <GripVertical className="size-4" />
           </button>
         </div>
 
-        {/* Spine gutter: color mark centered on the vertical arrow */}
+        {/* Spine gutter: color mark centered on the vertical arrow — also a drag handle */}
         <div
           className={cn(
-            "relative z-[1] flex shrink-0 items-center justify-center self-stretch",
-            SPINE_GUTTER
+            "relative z-[1] flex shrink-0 touch-none items-center justify-center self-stretch",
+            SPINE_GUTTER,
+            !editing && "cursor-grab active:cursor-grabbing"
           )}
+          onPointerDown={startDrag}
+          title={`${meta.label} — drag to reorder`}
         >
           <span
             aria-hidden
             className="pointer-events-none absolute top-1/2 left-1/2 h-[3px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full sm:w-11"
             style={{ backgroundColor: meta.color }}
-            title={meta.label}
           />
         </div>
 
         <div className="min-w-0 flex-1 pt-0.5">
           {editing ? (
-            <div className="space-y-2 pb-1">
+            <div
+              className="space-y-2 pb-1"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               <Input
                 value={event.title}
                 onChange={(e) => onPatch({ title: e.target.value })}
@@ -305,10 +328,18 @@ function EventRow({
               </Button>
             </div>
           ) : (
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={onSelect}
-              className="w-full py-0.5 text-left"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect();
+                }
+              }}
+              onPointerDown={startDrag}
+              className="w-full touch-none py-0.5 text-left"
             >
               <span className="block truncate text-sm font-medium text-[var(--foreground)]">
                 {event.title}
@@ -316,11 +347,14 @@ function EventRow({
               <span className="text-[10px] text-[var(--muted)]">
                 {formatShortDate(event.date)} · {meta.label}
               </span>
-            </button>
+            </div>
           )}
         </div>
 
-        <div className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100">
+        <div
+          className="mt-1 flex shrink-0 items-center gap-0.5 opacity-80 transition group-hover:opacity-100"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           {!editing ? (
             <button
               type="button"
@@ -375,6 +409,13 @@ export function TimelinePage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** Stable id list for Reorder — updated live while dragging. */
+  const [orderIds, setOrderIds] = useState<string[]>([]);
+  const orderIdsRef = useRef(orderIds);
+  orderIdsRef.current = orderIds;
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+  const draggingRef = useRef(false);
 
   const [showAreas, setShowAreas] = useState(false);
   const [newAreaLabel, setNewAreaLabel] = useState("");
@@ -396,6 +437,20 @@ export function TimelinePage() {
       filter === "all" ? sorted : sorted.filter((e) => e.areaId === filter),
     [sorted, filter]
   );
+
+  const filteredIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
+
+  // Keep Reorder ids in sync when data/filter changes (not mid-drag).
+  useEffect(() => {
+    if (draggingRef.current) return;
+    setOrderIds(filteredIds);
+  }, [filteredIds]);
+
+  const eventsById = useMemo(() => {
+    const map = new Map<string, TimelineEvent>();
+    for (const e of timeline) map.set(e.id, e);
+    return map;
+  }, [timeline]);
 
   const flash = () => {
     setSavedFlash(true);
@@ -445,8 +500,20 @@ export function TimelinePage() {
     );
   };
 
-  const onReorder = (nextFiltered: TimelineEvent[]) => {
-    persistEvents(applySubsetOrder(timeline, nextFiltered));
+  const onReorderIds = (nextIds: string[]) => {
+    orderIdsRef.current = nextIds;
+    setOrderIds(nextIds);
+  };
+
+  const handleDragStart = () => {
+    draggingRef.current = true;
+  };
+
+  const handleDragEnd = () => {
+    draggingRef.current = false;
+    persistEvents(
+      applySubsetOrderByIds(timelineRef.current, orderIdsRef.current)
+    );
   };
 
   const addArea = () => {
@@ -809,40 +876,46 @@ export function TimelinePage() {
             <ArrowDown className="size-4" strokeWidth={2.25} />
           </div>
 
-          {filtered.length === 0 ? (
+          {orderIds.length === 0 ? (
             <p className="py-8 pl-16 text-sm text-[var(--muted)]">
               No events yet. Add one above — day is optional.
             </p>
           ) : (
             <Reorder.Group
               axis="y"
-              values={filtered}
-              onReorder={onReorder}
+              values={orderIds}
+              onReorder={onReorderIds}
               className="relative z-[1] space-y-0.5 pb-10"
               as="ul"
             >
-              {filtered.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  areas={timelineAreas}
-                  active={selectedId === event.id || editingId === event.id}
-                  editing={editingId === event.id}
-                  onSelect={() => {
-                    setSelectedId((id) =>
-                      id === event.id ? null : event.id
-                    );
-                    setEditingId(null);
-                  }}
-                  onEdit={() => {
-                    setEditingId(event.id);
-                    setSelectedId(event.id);
-                  }}
-                  onDelete={() => removeEvent(event.id)}
-                  onPatch={(patch) => patchEvent(event.id, patch)}
-                  onDoneEdit={() => setEditingId(null)}
-                />
-              ))}
+              {orderIds.map((id) => {
+                const event = eventsById.get(id);
+                if (!event) return null;
+                return (
+                  <EventRow
+                    key={event.id}
+                    event={event}
+                    areas={timelineAreas}
+                    active={selectedId === event.id || editingId === event.id}
+                    editing={editingId === event.id}
+                    onSelect={() => {
+                      setSelectedId((cur) =>
+                        cur === event.id ? null : event.id
+                      );
+                      setEditingId(null);
+                    }}
+                    onEdit={() => {
+                      setEditingId(event.id);
+                      setSelectedId(event.id);
+                    }}
+                    onDelete={() => removeEvent(event.id)}
+                    onPatch={(patch) => patchEvent(event.id, patch)}
+                    onDoneEdit={() => setEditingId(null)}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  />
+                );
+              })}
             </Reorder.Group>
           )}
         </div>
