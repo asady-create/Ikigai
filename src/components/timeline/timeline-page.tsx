@@ -625,8 +625,8 @@ export function TimelinePage() {
             Chronology
           </h1>
           <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
-            From January 2025 downward. Drag an event (or use ↑ ↓) to reorder.
-            Day is optional.
+            “Most people overestimate what they can do in a year and
+            underestimate what they can do in a decade.” — Bill Gates
           </p>
         </div>
         <span
