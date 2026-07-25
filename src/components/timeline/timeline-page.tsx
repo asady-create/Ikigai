@@ -2,20 +2,29 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowDown, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { nanoid } from "nanoid";
 import { useIkigai } from "@/components/providers/ikigai-provider";
 import type { TimelineAreaDef, TimelineEvent } from "@/lib/types";
 import {
   AREA_COLOR_PRESETS,
-  buildMonthSpine,
   daysInMonth,
   findArea,
   formatDisplayDate,
   formatShortDate,
-  monthKeyFromDate,
   monthOptions,
+  moveEventOrder,
   parseISODate,
+  reindexOrders,
   sortTimeline,
   toISODate,
   yearOptions,
@@ -31,16 +40,17 @@ function todayISO() {
 const selectClass =
   "flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30";
 
-/** Year / Month / Day selects with a clear readable date readout. */
+/** Optional day/month/year selects with a clear readable readout. */
 function ClearDatePicker({
   value,
   onChange,
   idPrefix = "date",
 }: {
-  value: string;
-  onChange: (iso: string) => void;
+  value: string | null;
+  onChange: (iso: string | null) => void;
   idPrefix?: string;
 }) {
+  const known = Boolean(value);
   const parts = parseISODate(value || todayISO());
   const years = yearOptions();
   const months = monthOptions();
@@ -57,74 +67,96 @@ function ClearDatePicker({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label
-            className="mb-1 block text-xs text-[var(--muted)]"
-            htmlFor={`${idPrefix}-day`}
-          >
-            Day
-          </label>
-          <select
-            id={`${idPrefix}-day`}
-            className={selectClass}
-            value={day}
-            onChange={(e) => setPart({ day: Number(e.target.value) })}
-          >
-            {days.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label
-            className="mb-1 block text-xs text-[var(--muted)]"
-            htmlFor={`${idPrefix}-month`}
-          >
-            Month
-          </label>
-          <select
-            id={`${idPrefix}-month`}
-            className={selectClass}
-            value={parts.month}
-            onChange={(e) => setPart({ month: Number(e.target.value) })}
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label
-            className="mb-1 block text-xs text-[var(--muted)]"
-            htmlFor={`${idPrefix}-year`}
-          >
-            Year
-          </label>
-          <select
-            id={`${idPrefix}-year`}
-            className={selectClass}
-            value={parts.year}
-            onChange={(e) => setPart({ year: Number(e.target.value) })}
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <p className="text-sm text-[var(--foreground)]">
-        <span className="text-[var(--muted)]">Selected: </span>
-        <span className="font-medium">
-          {formatDisplayDate(toISODate(parts.year, parts.month, day))}
-        </span>
-      </p>
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--foreground)]">
+        <input
+          type="checkbox"
+          checked={!known}
+          onChange={(e) => {
+            if (e.target.checked) onChange(null);
+            else onChange(value || todayISO());
+          }}
+          className="size-4 rounded border-[var(--border)] accent-[var(--accent)]"
+        />
+        I don’t know the exact date
+      </label>
+
+      {known ? (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label
+                className="mb-1 block text-xs text-[var(--muted)]"
+                htmlFor={`${idPrefix}-day`}
+              >
+                Day
+              </label>
+              <select
+                id={`${idPrefix}-day`}
+                className={selectClass}
+                value={day}
+                onChange={(e) => setPart({ day: Number(e.target.value) })}
+              >
+                {days.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                className="mb-1 block text-xs text-[var(--muted)]"
+                htmlFor={`${idPrefix}-month`}
+              >
+                Month
+              </label>
+              <select
+                id={`${idPrefix}-month`}
+                className={selectClass}
+                value={parts.month}
+                onChange={(e) => setPart({ month: Number(e.target.value) })}
+              >
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                className="mb-1 block text-xs text-[var(--muted)]"
+                htmlFor={`${idPrefix}-year`}
+              >
+                Year
+              </label>
+              <select
+                id={`${idPrefix}-year`}
+                className={selectClass}
+                value={parts.year}
+                onChange={(e) => setPart({ year: Number(e.target.value) })}
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-sm text-[var(--foreground)]">
+            <span className="text-[var(--muted)]">Selected: </span>
+            <span className="font-medium">
+              {formatDisplayDate(toISODate(parts.year, parts.month, day))}
+            </span>
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-[var(--muted)]">
+          This event will sit on the arrow without a fixed date — move it up or
+          down to place it.
+        </p>
+      )}
     </div>
   );
 }
@@ -138,7 +170,7 @@ export function TimelinePage() {
     setTimelineAreas,
   } = useIkigai();
 
-  const [date, setDate] = useState(todayISO);
+  const [date, setDate] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [areaId, setAreaId] = useState("offer");
   const [note, setNote] = useState("");
@@ -147,7 +179,6 @@ export function TimelinePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // Area manager
   const [showAreas, setShowAreas] = useState(false);
   const [newAreaLabel, setNewAreaLabel] = useState("");
   const [newAreaColor, setNewAreaColor] = useState(AREA_COLOR_PRESETS[0]);
@@ -155,14 +186,12 @@ export function TimelinePage() {
   const [editLabel, setEditLabel] = useState("");
   const [editColor, setEditColor] = useState("");
 
-  // Keep selected area valid when areas change
   useEffect(() => {
     if (!timelineAreas.some((a) => a.id === areaId) && timelineAreas[0]) {
       setAreaId(timelineAreas[0].id);
     }
   }, [timelineAreas, areaId]);
 
-  const months = useMemo(() => buildMonthSpine(3), []);
   const sorted = useMemo(() => sortTimeline(timeline), [timeline]);
 
   const filtered = useMemo(
@@ -171,24 +200,13 @@ export function TimelinePage() {
     [sorted, filter]
   );
 
-  const byMonth = useMemo(() => {
-    const map = new Map<string, TimelineEvent[]>();
-    for (const m of months) map.set(m.key, []);
-    for (const e of filtered) {
-      const key = monthKeyFromDate(e.date);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(e);
-    }
-    return map;
-  }, [months, filtered]);
-
   const flash = () => {
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1000);
   };
 
   const persistEvents = (next: TimelineEvent[]) => {
-    setTimeline(next);
+    setTimeline(reindexOrders(next));
     flash();
   };
 
@@ -199,7 +217,8 @@ export function TimelinePage() {
 
   const addEvent = () => {
     const t = title.trim();
-    if (!t || !date) return;
+    if (!t) return;
+    const maxOrder = timeline.reduce((m, e) => Math.max(m, e.order), -1);
     const event: TimelineEvent = {
       id: nanoid(10),
       date,
@@ -207,10 +226,12 @@ export function TimelinePage() {
       areaId,
       note: note.trim(),
       createdAt: new Date().toISOString(),
+      order: maxOrder + 1,
     };
     persistEvents([...timeline, event]);
     setTitle("");
     setNote("");
+    setDate(null);
     setSelectedId(event.id);
     setEditing(false);
   };
@@ -221,6 +242,11 @@ export function TimelinePage() {
       setSelectedId(null);
       setEditing(false);
     }
+  };
+
+  const moveEvent = (id: string, direction: -1 | 1) => {
+    // Reorder on the full list so filter doesn't scramble global order
+    persistEvents(moveEventOrder(timeline, id, direction));
   };
 
   const updateSelected = (patch: Partial<TimelineEvent>) => {
@@ -293,7 +319,8 @@ export function TimelinePage() {
             Chronology
           </h1>
           <p className="mt-2 max-w-lg text-sm text-[var(--muted)]">
-            From January 2025 downward. Colored lines mark which area changed.
+            From January 2025 downward. Colored marks sit on the arrow — move
+            events up or down to place them.
           </p>
         </div>
         <span
@@ -502,7 +529,7 @@ export function TimelinePage() {
           Add event
         </h2>
         <div className="mt-3">
-          <p className="mb-1 text-xs text-[var(--muted)]">Date</p>
+          <p className="mb-1 text-xs text-[var(--muted)]">Date (optional)</p>
           <ClearDatePicker value={date} onChange={setDate} idPrefix="add" />
         </div>
         <div className="mt-3">
@@ -556,14 +583,14 @@ export function TimelinePage() {
           className="mt-3"
           variant="accent"
           onClick={addEvent}
-          disabled={!title.trim() || !date}
+          disabled={!title.trim()}
         >
           <Plus />
           Add to timeline
         </Button>
       </section>
 
-      {/* Vertical timeline */}
+      {/* Vertical arrow with centered color marks */}
       <section className="relative">
         <div className="mb-4 flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
           <span>January 2025</span>
@@ -571,85 +598,117 @@ export function TimelinePage() {
           <span>now</span>
         </div>
 
-        <div className="relative pl-4 sm:pl-6">
+        <div className="relative">
+          {/* Spine — centered under the color marks (mark is w-10 / w-14; spine at 20px / 28px) */}
           <div
             aria-hidden
-            className="absolute top-0 bottom-8 left-[7px] w-px bg-[var(--border)] sm:left-[11px]"
+            className="absolute top-0 bottom-6 left-5 w-px -translate-x-1/2 bg-[var(--border)] sm:left-7"
           />
           <div
             aria-hidden
-            className="absolute bottom-0 left-[1px] text-[var(--accent)] sm:left-[5px]"
+            className="absolute bottom-0 left-5 -translate-x-1/2 text-[var(--accent)] sm:left-7"
           >
             <ArrowDown className="size-4" strokeWidth={2.25} />
           </div>
 
-          <ul className="space-y-0 pb-10">
-            {months.map((m, i) => {
-              const events = byMonth.get(m.key) ?? [];
-              return (
-                <motion.li
-                  key={m.key}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i * 0.015, 0.3) }}
-                  className="relative pb-6"
-                >
-                  <span
-                    aria-hidden
-                    className="absolute top-1.5 left-[-1px] size-2.5 rounded-full border-2 border-[var(--accent)] bg-[var(--background)] sm:left-[3px]"
-                  />
+          {filtered.length === 0 ? (
+            <p className="py-8 pl-12 text-sm text-[var(--muted)] sm:pl-16">
+              No events yet. Add one above — date is optional.
+            </p>
+          ) : (
+            <ul className="space-y-1 pb-10">
+              {filtered.map((event, i) => {
+                const meta = findArea(timelineAreas, event.areaId);
+                const active = selectedId === event.id;
+                const fullIndex = sorted.findIndex((e) => e.id === event.id);
+                const canUp = fullIndex > 0;
+                const canDown = fullIndex >= 0 && fullIndex < sorted.length - 1;
 
-                  <div className="ml-5 sm:ml-6">
-                    <p className="font-display text-sm font-semibold text-[var(--foreground)]">
-                      {m.label}
-                    </p>
-
-                    {events.length === 0 ? (
-                      <p className="mt-1 text-xs text-[var(--muted)]/70">—</p>
-                    ) : (
-                      <ul className="mt-2 space-y-2">
-                        {events.map((event) => {
-                          const meta = findArea(timelineAreas, event.areaId);
-                          const active = selectedId === event.id;
-                          return (
-                            <li key={event.id}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedId((id) =>
-                                    id === event.id ? null : event.id
-                                  );
-                                  setEditing(false);
-                                }}
-                                className={cn(
-                                  "group flex w-full items-center gap-3 rounded-md py-1 text-left transition",
-                                  active && "bg-[var(--accent-soft)]/50"
-                                )}
-                              >
-                                <span
-                                  className="h-[3px] w-10 shrink-0 rounded-full sm:w-14"
-                                  style={{ backgroundColor: meta.color }}
-                                  title={meta.label}
-                                />
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-medium text-[var(--foreground)]">
-                                    {event.title}
-                                  </span>
-                                  <span className="text-[10px] text-[var(--muted)]">
-                                    {formatShortDate(event.date)} · {meta.label}
-                                  </span>
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                return (
+                  <motion.li
+                    key={event.id}
+                    layout
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i * 0.02, 0.25) }}
+                    className={cn(
+                      "group relative flex items-center gap-2 rounded-md py-2 pr-1 transition",
+                      active && "bg-[var(--accent-soft)]/40"
                     )}
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
+                  >
+                    {/* Color mark centered on the spine */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId((id) =>
+                          id === event.id ? null : event.id
+                        );
+                        setEditing(false);
+                      }}
+                      className="relative z-[1] flex w-10 shrink-0 items-center justify-center sm:w-14"
+                      title={meta.label}
+                      aria-label={`${event.title}, ${meta.label}`}
+                    >
+                      <span
+                        className="h-[3px] w-10 rounded-full sm:w-14"
+                        style={{ backgroundColor: meta.color }}
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId((id) =>
+                          id === event.id ? null : event.id
+                        );
+                        setEditing(false);
+                      }}
+                      className="min-w-0 flex-1 py-0.5 text-left"
+                    >
+                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                        {event.title}
+                      </span>
+                      <span className="text-[10px] text-[var(--muted)]">
+                        {formatShortDate(event.date)} · {meta.label}
+                      </span>
+                    </button>
+
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => moveEvent(event.id, -1)}
+                        disabled={!canUp}
+                        className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
+                        aria-label="Move up"
+                        title="Move up"
+                      >
+                        <ChevronUp className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveEvent(event.id, 1)}
+                        disabled={!canDown}
+                        className="rounded p-1 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-25"
+                        aria-label="Move down"
+                        title="Move down"
+                      >
+                        <ChevronDown className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeEvent(event.id)}
+                        className="rounded p-1 text-[var(--muted)] hover:text-red-600"
+                        aria-label="Delete event"
+                        title="Delete"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </motion.li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </section>
 

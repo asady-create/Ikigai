@@ -76,13 +76,15 @@ export interface TimelineAreaDef {
 
 export interface TimelineEvent {
   id: string;
-  /** YYYY-MM-DD */
-  date: string;
+  /** YYYY-MM-DD, or null when the exact date is unknown */
+  date: string | null;
   title: string;
   /** References TimelineAreaDef.id */
   areaId: string;
   note: string;
   createdAt: string;
+  /** Manual position on the arrow (lower = higher / earlier) */
+  order: number;
 }
 
 export interface AppData {

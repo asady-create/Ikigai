@@ -66,7 +66,8 @@ export function normalizeTimelineAreas(
 
 export function normalizeTimelineEvent(
   raw: Partial<TimelineEvent> & { id: string } & { area?: string },
-  areas: TimelineAreaDef[]
+  areas: TimelineAreaDef[],
+  orderFallback = 0
 ): TimelineEvent {
   const areaIds = new Set(areas.map((a) => a.id));
   // Migrate legacy `area` field → areaId
@@ -75,13 +76,24 @@ export function normalizeTimelineEvent(
   if (!areaIds.has(areaId)) {
     areaId = areas[0]?.id ?? "other";
   }
+  // Empty string / missing → unknown date (null)
+  const rawDate = raw.date;
+  const date =
+    typeof rawDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+      ? rawDate
+      : null;
+  const order =
+    typeof raw.order === "number" && Number.isFinite(raw.order)
+      ? raw.order
+      : orderFallback;
   return {
     id: raw.id,
-    date: raw.date || new Date().toISOString().slice(0, 10),
+    date,
     title: raw.title ?? "",
     areaId,
     note: raw.note ?? "",
     createdAt: raw.createdAt ?? new Date().toISOString(),
+    order,
   };
 }
 
@@ -104,7 +116,7 @@ export function parseISODate(iso: string): {
   month: number;
   day: number;
 } {
-  const [y, m, d] = iso.split("-").map(Number);
+  const [y, m, d] = (iso || "").split("-").map(Number);
   return {
     year: y || TIMELINE_START.year,
     month: m || 1,
@@ -122,17 +134,19 @@ export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-/** Clear human date: "15 January 2025" */
-export function formatDisplayDate(iso: string): string {
+/** Clear human date: "15 January 2025" — or "Date unknown" */
+export function formatDisplayDate(iso: string | null | undefined): string {
+  if (!iso) return "Date unknown";
   const { year, month, day } = parseISODate(iso);
-  if (!year || !month || !day) return iso;
+  if (!year || !month || !day) return "Date unknown";
   return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
-/** Shorter: "15 Jan 2025" */
-export function formatShortDate(iso: string): string {
+/** Shorter: "15 Jan 2025" — or "Date unknown" */
+export function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return "Date unknown";
   const { year, month, day } = parseISODate(iso);
-  if (!year || !month || !day) return iso;
+  if (!year || !month || !day) return "Date unknown";
   const short = MONTH_NAMES[month - 1].slice(0, 3);
   return `${day} ${short} ${year}`;
 }
@@ -181,14 +195,42 @@ export function buildMonthSpine(bufferMonths = 2): {
   return months;
 }
 
-export function monthKeyFromDate(isoDate: string): string {
+export function monthKeyFromDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return "unknown";
   return isoDate.slice(0, 7);
 }
 
+/** Sort by manual order on the arrow (then date / created). */
 export function sortTimeline(events: TimelineEvent[]): TimelineEvent[] {
   return [...events].sort((a, b) => {
-    const byDate = a.date.localeCompare(b.date);
-    if (byDate !== 0) return byDate;
+    if (a.order !== b.order) return a.order - b.order;
+    if (a.date && b.date) {
+      const byDate = a.date.localeCompare(b.date);
+      if (byDate !== 0) return byDate;
+    } else if (a.date && !b.date) return -1;
+    else if (!a.date && b.date) return 1;
     return a.createdAt.localeCompare(b.createdAt);
   });
+}
+
+/** Reindex orders 0..n-1 after a reorder. */
+export function reindexOrders(events: TimelineEvent[]): TimelineEvent[] {
+  return sortTimeline(events).map((e, i) => ({ ...e, order: i }));
+}
+
+export function moveEventOrder(
+  events: TimelineEvent[],
+  id: string,
+  direction: -1 | 1
+): TimelineEvent[] {
+  const sorted = sortTimeline(events);
+  const index = sorted.findIndex((e) => e.id === id);
+  if (index < 0) return events;
+  const target = index + direction;
+  if (target < 0 || target >= sorted.length) return events;
+  const next = [...sorted];
+  const tmp = next[index];
+  next[index] = next[target];
+  next[target] = tmp;
+  return reindexOrders(next);
 }

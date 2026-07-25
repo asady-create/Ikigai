@@ -67,10 +67,11 @@ export function normalizeAppData(raw: Partial<AppData> | null): AppData {
     notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
     insights: normalizeInsights(raw.insights),
     timelineAreas,
-    timeline: (raw.timeline ?? []).map((e) =>
+    timeline: (raw.timeline ?? []).map((e, i) =>
       normalizeTimelineEvent(
         e as TimelineEvent & { area?: string },
-        timelineAreas
+        timelineAreas,
+        i
       )
     ),
   };
@@ -427,7 +428,9 @@ export function saveTimeline(timeline: TimelineEvent[]): AppData {
   const data = loadAppDataLocal();
   const areas = normalizeTimelineAreas(data.timelineAreas);
   data.timelineAreas = areas;
-  data.timeline = timeline.map((e) => normalizeTimelineEvent(e, areas));
+  data.timeline = timeline.map((e, i) =>
+    normalizeTimelineEvent(e, areas, i)
+  );
   saveAppData(data);
   return data;
 }
@@ -439,10 +442,11 @@ export function saveTimelineAreas(areas: TimelineAreaDef[]): AppData {
   // Remap events whose area was deleted → first area
   const ids = new Set(nextAreas.map((a) => a.id));
   const fallback = nextAreas[0]?.id ?? "other";
-  data.timeline = (data.timeline ?? []).map((e) =>
+  data.timeline = (data.timeline ?? []).map((e, i) =>
     normalizeTimelineEvent(
       { ...e, areaId: ids.has(e.areaId) ? e.areaId : fallback },
-      nextAreas
+      nextAreas,
+      i
     )
   );
   saveAppData(data);
@@ -516,11 +520,12 @@ export function exportMapMarkdown(): string {
   if ((timeline ?? []).length > 0) {
     const areas = loadAppDataLocal().timelineAreas;
     lines.push("## Timeline", "");
-    for (const e of [...timeline].sort((a, b) => a.date.localeCompare(b.date))) {
+    for (const e of [...timeline].sort((a, b) => a.order - b.order)) {
       const label =
         areas.find((a) => a.id === e.areaId)?.label ?? e.areaId;
+      const when = e.date ?? "date unknown";
       lines.push(
-        `- ${e.date} · [${label}] ${e.title}${e.note ? ` — ${e.note}` : ""}`
+        `- ${when} · [${label}] ${e.title}${e.note ? ` — ${e.note}` : ""}`
       );
     }
     lines.push("");
