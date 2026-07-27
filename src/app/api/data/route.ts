@@ -6,28 +6,10 @@ import {
   readDiskStore,
   writeDiskStore,
 } from "@/lib/disk-store";
+import { isEffectivelyEmpty } from "@/lib/data-safety";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function isEmpty(data: AppData): boolean {
-  const m = data.map;
-  if (m) {
-    if (
-      [m.want, m.goodAt, m.need, m.reward, m.offer, m.synthesis].some((s) =>
-        s?.trim()
-      )
-    ) {
-      return false;
-    }
-    if (m.skillsHave.length || m.skillsLack.length || m.values?.length) {
-      return false;
-    }
-  }
-  if (data.notes?.length || data.insights?.length || data.timeline?.length)
-    return false;
-  return true;
-}
 
 export async function GET() {
   const data = await readDiskStore();
@@ -38,6 +20,7 @@ export async function GET() {
       insights: [],
       timeline: [],
       timelineAreas: [],
+      revision: 0,
     },
     path: getStorePath(),
     exists: data !== null,
@@ -58,13 +41,17 @@ async function save(req: Request) {
     insights: body.insights ?? [],
     timeline: body.timeline ?? [],
     timelineAreas: body.timelineAreas ?? [],
+    revision: body.revision ?? 0,
   };
 
-  const existing = await readDiskStore();
+  // force only via explicit header (used by reset flows — not by normal saves)
+  const force =
+    req.headers.get("x-ikigai-force") === "1" &&
+    req.headers.get("x-ikigai-confirm-reset") === "1";
 
-  // Never let an empty payload wipe a rich disk file
-  if (isEmpty(incoming)) {
-    if (existing && !isEmpty(existing)) {
+  if (!force && isEffectivelyEmpty(incoming)) {
+    const existing = await readDiskStore();
+    if (existing && !isEffectivelyEmpty(existing)) {
       return NextResponse.json({
         ok: true,
         skipped: true,
@@ -74,41 +61,14 @@ async function save(req: Request) {
     }
   }
 
-  // Don't let a payload that still has map/notes wipe chronology (or vice versa)
-  if (existing) {
-    const keepTimeline =
-      (existing.timeline?.length ?? 0) > 0 &&
-      (incoming.timeline?.length ?? 0) === 0;
-    const keepNotes =
-      (existing.notes?.length ?? 0) > 0 && (incoming.notes?.length ?? 0) === 0;
-    const keepInsights =
-      (existing.insights?.length ?? 0) > 0 &&
-      (incoming.insights?.length ?? 0) === 0;
-    const keepMap =
-      existing.map &&
-      !incoming.map;
-
-    if (keepTimeline || keepNotes || keepInsights || keepMap) {
-      await writeDiskStore({
-        map: keepMap ? existing.map : incoming.map,
-        notes: keepNotes ? existing.notes : incoming.notes,
-        insights: keepInsights ? existing.insights : incoming.insights,
-        timeline: keepTimeline ? existing.timeline : incoming.timeline,
-        timelineAreas:
-          incoming.timelineAreas?.length
-            ? incoming.timelineAreas
-            : existing.timelineAreas,
-      });
-      return NextResponse.json({
-        ok: true,
-        merged: true,
-        path: getStorePath(),
-      });
-    }
-  }
-
-  await writeDiskStore(incoming);
-  return NextResponse.json({ ok: true, path: getStorePath() });
+  const result = await writeDiskStore(incoming, { force });
+  return NextResponse.json({
+    ok: true,
+    path: getStorePath(),
+    protected: result.protected,
+    reason: result.reason,
+    revision: result.data.revision ?? 0,
+  });
 }
 
 export async function PUT(req: Request) {

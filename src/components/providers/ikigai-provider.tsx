@@ -93,7 +93,9 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const flush = () => {
+      // Never flush before hydrate — EMPTY initial state must not hit disk
       if (!readyRef.current) return;
+      if (!dataRef.current) return;
       flushAppData(dataRef.current);
     };
     window.addEventListener("beforeunload", flush);
@@ -106,6 +108,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVis);
+      // On provider unmount, only flush if we finished hydrating
       flush();
     };
   }, []);

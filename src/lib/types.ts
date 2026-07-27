@@ -98,4 +98,9 @@ export interface AppData {
   insights: InsightIdea[];
   timeline: TimelineEvent[];
   timelineAreas: TimelineAreaDef[];
+  /**
+   * Monotonic save counter. Disk rejects/merges writes with a lower revision
+   * so a stale tab or pre-hydrate payload cannot wipe newer data.
+   */
+  revision?: number;
 }
