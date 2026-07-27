@@ -60,14 +60,48 @@ async function save(req: Request) {
     timelineAreas: body.timelineAreas ?? [],
   };
 
+  const existing = await readDiskStore();
+
   // Never let an empty payload wipe a rich disk file
   if (isEmpty(incoming)) {
-    const existing = await readDiskStore();
     if (existing && !isEmpty(existing)) {
       return NextResponse.json({
         ok: true,
         skipped: true,
         reason: "empty_overwrite_blocked",
+        path: getStorePath(),
+      });
+    }
+  }
+
+  // Don't let a payload that still has map/notes wipe chronology (or vice versa)
+  if (existing) {
+    const keepTimeline =
+      (existing.timeline?.length ?? 0) > 0 &&
+      (incoming.timeline?.length ?? 0) === 0;
+    const keepNotes =
+      (existing.notes?.length ?? 0) > 0 && (incoming.notes?.length ?? 0) === 0;
+    const keepInsights =
+      (existing.insights?.length ?? 0) > 0 &&
+      (incoming.insights?.length ?? 0) === 0;
+    const keepMap =
+      existing.map &&
+      !incoming.map;
+
+    if (keepTimeline || keepNotes || keepInsights || keepMap) {
+      await writeDiskStore({
+        map: keepMap ? existing.map : incoming.map,
+        notes: keepNotes ? existing.notes : incoming.notes,
+        insights: keepInsights ? existing.insights : incoming.insights,
+        timeline: keepTimeline ? existing.timeline : incoming.timeline,
+        timelineAreas:
+          incoming.timelineAreas?.length
+            ? incoming.timelineAreas
+            : existing.timelineAreas,
+      });
+      return NextResponse.json({
+        ok: true,
+        merged: true,
         path: getStorePath(),
       });
     }

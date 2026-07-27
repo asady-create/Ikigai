@@ -341,6 +341,59 @@ export async function fetchDiskData(): Promise<AppData | null> {
 }
 
 /**
+ * Merge two payloads field-by-field so a rich map/notes payload with an
+ * empty timeline cannot wipe chronology events (and vice versa).
+ */
+export function mergeAppData(a: AppData, b: AppData): AppData {
+  const pickMap = (): PurposeMap | null => {
+    const score = (m: PurposeMap | null) =>
+      m ? contentScore({ ...DEFAULT_DATA, map: m }) : 0;
+    return score(a.map) >= score(b.map) ? a.map : b.map;
+  };
+
+  const pickList = <T,>(left: T[], right: T[], weight: (item: T) => number): T[] => {
+    const score = (list: T[]) => list.reduce((s, item) => s + weight(item), 0);
+    return score(left) >= score(right) ? left : right;
+  };
+
+  const timeline = pickList(
+    a.timeline ?? [],
+    b.timeline ?? [],
+    (e) => (e.title?.trim() ? Math.min(e.title.trim().length, 80) + 10 : 0)
+  );
+  const notes = pickList(
+    a.notes ?? [],
+    b.notes ?? [],
+    (n) => (n.content?.trim() ? Math.min(n.content.trim().length, 200) : 0)
+  );
+  const insights = pickList(
+    a.insights ?? [],
+    b.insights ?? [],
+    () => 15
+  );
+
+  // Prefer custom areas if either side changed away from defaults length/content
+  const areasA = normalizeTimelineAreas(a.timelineAreas);
+  const areasB = normalizeTimelineAreas(b.timelineAreas);
+  const timelineAreas =
+    areasA.length !== DEFAULT_TIMELINE_AREAS.length ||
+    areasA.some((x, i) => x.label !== DEFAULT_TIMELINE_AREAS[i]?.label)
+      ? areasA
+      : areasB.length !== DEFAULT_TIMELINE_AREAS.length ||
+          areasB.some((x, i) => x.label !== DEFAULT_TIMELINE_AREAS[i]?.label)
+        ? areasB
+        : areasA;
+
+  return normalizeAppData({
+    map: pickMap(),
+    notes,
+    insights,
+    timeline,
+    timelineAreas,
+  });
+}
+
+/**
  * Load from disk (source of truth) + merge with browser cache.
  * Call once on app start before marking ready.
  */
@@ -356,14 +409,16 @@ export async function hydrateAppData(): Promise<AppData> {
     return local;
   }
 
-  if (contentScore(disk) >= contentScore(local)) {
+  if (isEffectivelyEmpty(local)) {
     saveAppDataLocal(disk, { force: true });
     return disk;
   }
 
-  // Browser has newer/richer content — push up to disk
-  syncToDisk(local, true);
-  return local;
+  // Merge so map/notes on one side and timeline on the other are both kept
+  const merged = mergeAppData(disk, local);
+  saveAppDataLocal(merged, { force: true });
+  syncToDisk(merged, true);
+  return merged;
 }
 
 export function saveAppData(
