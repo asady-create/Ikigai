@@ -13,14 +13,16 @@ import type {
   AppData,
   InsightIdea,
   Note,
-  NoteTag,
   PurposeMap,
   TimelineAreaDef,
   TimelineEvent,
 } from "./types";
-import { NOTE_TAGS } from "./types";
+import { DEFAULT_NOTE_TAGS } from "./types";
 import { createEmptyMap, normalizeMap } from "./synthesis";
-import { isNoteTag } from "./note-tags";
+import {
+  normalizeNoteTagList,
+  normalizeNoteTags,
+} from "./note-tags";
 import { normalizeInsights } from "./insights";
 import {
   DEFAULT_TIMELINE_AREAS,
@@ -48,6 +50,7 @@ const DEFAULT_DATA: AppData = {
   insights: [],
   timeline: [],
   timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+  noteTags: [...DEFAULT_NOTE_TAGS],
   revision: 0,
 };
 
@@ -56,15 +59,13 @@ function isBrowser() {
 }
 
 function normalizeNote(
-  raw: Partial<Note> & { id: string; content: string }
+  raw: Partial<Note> & { id: string; content: string },
+  vocabulary: string[] = [...DEFAULT_NOTE_TAGS]
 ): Note {
-  const tags = Array.isArray(raw.tags)
-    ? (raw.tags.filter((t) => isNoteTag(String(t))) as NoteTag[])
-    : [];
   return {
     id: raw.id,
     content: raw.content ?? "",
-    tags: NOTE_TAGS.filter((t) => tags.includes(t)),
+    tags: normalizeNoteTagList(raw.tags, vocabulary),
     createdAt: raw.createdAt ?? new Date().toISOString(),
     updatedAt: raw.updatedAt ?? raw.createdAt ?? new Date().toISOString(),
   };
@@ -73,13 +74,28 @@ function normalizeNote(
 export function normalizeAppData(raw: Partial<AppData> | null): AppData {
   if (!raw) return structuredClone(DEFAULT_DATA);
   const timelineAreas = normalizeTimelineAreas(raw.timelineAreas);
+  const noteTags = normalizeNoteTags(raw.noteTags);
+  // Also learn tags already used on notes
+  const used = new Set(noteTags.map((t) => t.toLowerCase()));
+  for (const n of raw.notes ?? []) {
+    for (const t of n.tags ?? []) {
+      const label = String(t ?? "").replace(/^#/, "").trim();
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (!used.has(key)) {
+        used.add(key);
+        noteTags.push(label.slice(0, 32));
+      }
+    }
+  }
   return {
     ...structuredClone(DEFAULT_DATA),
     ...raw,
     map: raw.map ? normalizeMap(raw.map) : null,
-    notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
+    notes: (raw.notes ?? []).map((n) => normalizeNote(n, noteTags)),
     insights: normalizeInsights(raw.insights),
     timelineAreas,
+    noteTags,
     timeline: (raw.timeline ?? []).map((e, i) =>
       normalizeTimelineEvent(
         e as TimelineEvent & { area?: string },
@@ -162,6 +178,7 @@ function migrateLegacy(): AppData | null {
       insights: [],
       timeline: [],
       timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+      noteTags: [...DEFAULT_NOTE_TAGS],
       revision: 1,
     };
     saveAppDataLocal(data, { force: true });
@@ -396,10 +413,17 @@ export function getNotes(): Note[] {
 
 export function saveNote(note: Note): AppData {
   const data = loadAppDataLocal();
-  const normalized = normalizeNote(note);
+  const vocabulary = normalizeNoteTags(data.noteTags);
+  const normalized = normalizeNote(note, vocabulary);
+  // Ensure any new tags on the note join the vocabulary
+  const nextVocab = normalizeNoteTags([
+    ...vocabulary,
+    ...normalized.tags,
+  ]);
+  data.noteTags = nextVocab;
   const idx = data.notes.findIndex((n) => n.id === normalized.id);
-  if (idx === -1) data.notes.push(normalized);
-  else data.notes[idx] = normalized;
+  if (idx === -1) data.notes.push(normalizeNote(normalized, nextVocab));
+  else data.notes[idx] = normalizeNote(normalized, nextVocab);
   saveAppData(data);
   return loadAppDataLocal();
 }
@@ -442,6 +466,23 @@ export function saveTimelineAreas(areas: TimelineAreaDef[]): AppData {
       i
     )
   );
+  saveAppData(data);
+  return loadAppDataLocal();
+}
+
+export function saveNoteTags(noteTags: string[]): AppData {
+  const data = loadAppDataLocal();
+  const nextTags = normalizeNoteTags(noteTags);
+  data.noteTags = nextTags;
+  // Remap note tags: keep those still in vocabulary (case-insensitive)
+  const byKey = new Map(nextTags.map((t) => [t.toLowerCase(), t]));
+  data.notes = data.notes.map((n) => ({
+    ...n,
+    tags: n.tags
+      .map((t) => byKey.get(t.toLowerCase()))
+      .filter((t): t is string => Boolean(t)),
+    updatedAt: new Date().toISOString(),
+  }));
   saveAppData(data);
   return loadAppDataLocal();
 }

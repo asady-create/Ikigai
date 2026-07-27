@@ -11,6 +11,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { AppData } from "./types";
+import { DEFAULT_NOTE_TAGS } from "./types";
 import { DEFAULT_TIMELINE_AREAS } from "./timeline";
 import {
   EMPTY_APP_DATA,
@@ -36,6 +37,7 @@ export function getPrevPath(): string {
 const EMPTY: AppData = {
   ...EMPTY_APP_DATA,
   timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+  noteTags: [...DEFAULT_NOTE_TAGS],
 };
 
 function normalizeDisk(parsed: Partial<AppData>): AppData {
@@ -49,6 +51,7 @@ function normalizeDisk(parsed: Partial<AppData>): AppData {
     timelineAreas:
       parsed.timelineAreas ??
       DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+    noteTags: parsed.noteTags ?? [...DEFAULT_NOTE_TAGS],
     revision: parsed.revision ?? 0,
   };
 }

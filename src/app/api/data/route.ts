@@ -20,6 +20,7 @@ export async function GET() {
       insights: [],
       timeline: [],
       timelineAreas: [],
+      noteTags: [],
       revision: 0,
     },
     path: getStorePath(),
@@ -41,6 +42,7 @@ async function save(req: Request) {
     insights: body.insights ?? [],
     timeline: body.timeline ?? [],
     timelineAreas: body.timelineAreas ?? [],
+    noteTags: body.noteTags ?? [],
     revision: body.revision ?? 0,
   };
 

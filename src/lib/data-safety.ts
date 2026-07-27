@@ -9,7 +9,9 @@ import type {
   TimelineAreaDef,
   TimelineEvent,
 } from "./types";
+import { DEFAULT_NOTE_TAGS } from "./types";
 import { DEFAULT_TIMELINE_AREAS, normalizeTimelineAreas } from "./timeline";
+import { normalizeNoteTags } from "./note-tags";
 
 export const EMPTY_APP_DATA: AppData = {
   map: null,
@@ -17,6 +19,7 @@ export const EMPTY_APP_DATA: AppData = {
   insights: [],
   timeline: [],
   timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+  noteTags: [...DEFAULT_NOTE_TAGS],
   revision: 0,
 };
 
@@ -101,6 +104,13 @@ function pickAreas(
   return areasA;
 }
 
+function pickNoteTags(
+  a: string[] | undefined,
+  b: string[] | undefined
+): string[] {
+  return normalizeNoteTags([...(a ?? []), ...(b ?? [])]);
+}
+
 /** Union merge — never drops items that exist on only one side. */
 export function mergeAppData(a: AppData, b: AppData): AppData {
   const map = mapScore(a.map) >= mapScore(b.map) ? a.map : b.map;
@@ -114,7 +124,6 @@ export function mergeAppData(a: AppData, b: AppData): AppData {
     a.timeline ?? [],
     b.timeline ?? [],
     (x, y) => {
-      // Prefer the copy with more text; tie-break by createdAt
       const wx = eventWeight(x);
       const wy = eventWeight(y);
       if (wy !== wx) return wy > wx ? y : x;
@@ -129,6 +138,7 @@ export function mergeAppData(a: AppData, b: AppData): AppData {
     insights,
     timeline,
     timelineAreas: pickAreas(a.timelineAreas, b.timelineAreas),
+    noteTags: pickNoteTags(a.noteTags, b.noteTags),
     revision,
   };
 }
@@ -220,6 +230,10 @@ export function protectAgainstLoss(
     insights: insights ?? [],
     timeline: timeline ?? [],
     timelineAreas: timelineAreas ?? existing.timelineAreas,
+    noteTags: normalizeNoteTags([
+      ...(incoming.noteTags ?? []),
+      ...(existing.noteTags ?? []),
+    ]),
     revision: Math.max(existingRev, incomingRev),
   };
 
