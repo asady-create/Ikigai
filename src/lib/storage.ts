@@ -3,27 +3,41 @@
  * 1) Disk file via /api/data → data/ikigai-store.json (survives reboot)
  * 2) localStorage cache + snapshot (fast UI, offline buffer)
  *
- * Disk is the source of truth on your computer when the Next.js app is running.
+ * Safety:
+ * - revision counters block stale tabs from overwriting newer data
+ * - empty / partial wipes are rejected or merged
+ * - disk keeps .prev + rotating .bak backups on every write
  */
 
 import type {
   AppData,
   InsightIdea,
   Note,
-  NoteTag,
   PurposeMap,
   TimelineAreaDef,
   TimelineEvent,
 } from "./types";
-import { NOTE_TAGS } from "./types";
+import { DEFAULT_NOTE_TAGS } from "./types";
 import { createEmptyMap, normalizeMap } from "./synthesis";
-import { isNoteTag } from "./note-tags";
+import {
+  normalizeNoteTagList,
+  normalizeNoteTags,
+} from "./note-tags";
 import { normalizeInsights } from "./insights";
 import {
   DEFAULT_TIMELINE_AREAS,
   normalizeTimelineAreas,
   normalizeTimelineEvent,
 } from "./timeline";
+import {
+  bumpRevision,
+  contentScore,
+  isEffectivelyEmpty,
+  mergeAppData,
+  protectAgainstLoss,
+} from "./data-safety";
+
+export { contentScore, isEffectivelyEmpty, mergeAppData } from "./data-safety";
 
 const STORAGE_KEY = "ikigai:v2";
 const SNAPSHOT_KEY = "ikigai:v2:snapshot";
@@ -36,6 +50,8 @@ const DEFAULT_DATA: AppData = {
   insights: [],
   timeline: [],
   timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+  noteTags: [...DEFAULT_NOTE_TAGS],
+  revision: 0,
 };
 
 function isBrowser() {
@@ -43,15 +59,13 @@ function isBrowser() {
 }
 
 function normalizeNote(
-  raw: Partial<Note> & { id: string; content: string }
+  raw: Partial<Note> & { id: string; content: string },
+  vocabulary: string[] = [...DEFAULT_NOTE_TAGS]
 ): Note {
-  const tags = Array.isArray(raw.tags)
-    ? (raw.tags.filter((t) => isNoteTag(String(t))) as NoteTag[])
-    : [];
   return {
     id: raw.id,
     content: raw.content ?? "",
-    tags: NOTE_TAGS.filter((t) => tags.includes(t)),
+    tags: normalizeNoteTagList(raw.tags, vocabulary),
     createdAt: raw.createdAt ?? new Date().toISOString(),
     updatedAt: raw.updatedAt ?? raw.createdAt ?? new Date().toISOString(),
   };
@@ -60,13 +74,28 @@ function normalizeNote(
 export function normalizeAppData(raw: Partial<AppData> | null): AppData {
   if (!raw) return structuredClone(DEFAULT_DATA);
   const timelineAreas = normalizeTimelineAreas(raw.timelineAreas);
+  const noteTags = normalizeNoteTags(raw.noteTags);
+  // Also learn tags already used on notes
+  const used = new Set(noteTags.map((t) => t.toLowerCase()));
+  for (const n of raw.notes ?? []) {
+    for (const t of n.tags ?? []) {
+      const label = String(t ?? "").replace(/^#/, "").trim();
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (!used.has(key)) {
+        used.add(key);
+        noteTags.push(label.slice(0, 32));
+      }
+    }
+  }
   return {
     ...structuredClone(DEFAULT_DATA),
     ...raw,
     map: raw.map ? normalizeMap(raw.map) : null,
-    notes: (raw.notes ?? []).map((n) => normalizeNote(n)),
+    notes: (raw.notes ?? []).map((n) => normalizeNote(n, noteTags)),
     insights: normalizeInsights(raw.insights),
     timelineAreas,
+    noteTags,
     timeline: (raw.timeline ?? []).map((e, i) =>
       normalizeTimelineEvent(
         e as TimelineEvent & { area?: string },
@@ -74,6 +103,7 @@ export function normalizeAppData(raw: Partial<AppData> | null): AppData {
         i
       )
     ),
+    revision: raw.revision ?? 0,
   };
 }
 
@@ -83,42 +113,6 @@ function parsePayload(raw: string): AppData | null {
   } catch {
     return null;
   }
-}
-
-/** How much real content is in this payload — used to block empty overwrites. */
-export function contentScore(data: AppData): number {
-  let score = 0;
-  const m = data.map;
-  if (m) {
-    for (const s of [
-      m.want,
-      m.goodAt,
-      m.need,
-      m.reward,
-      m.offer,
-      m.synthesis,
-    ]) {
-      if (s?.trim()) score += Math.min(s.trim().length, 200);
-    }
-    score += m.skillsHave.length * 20;
-    score += m.skillsLack.length * 20;
-    score += (m.values?.length ?? 0) * 10;
-    for (const sk of [...m.skillsHave, ...m.skillsLack]) {
-      if (sk.note?.trim()) score += Math.min(sk.note.trim().length, 80);
-    }
-  }
-  for (const n of data.notes) {
-    if (n.content?.trim()) score += Math.min(n.content.trim().length, 200);
-  }
-  score += data.insights.length * 15;
-  for (const e of data.timeline ?? []) {
-    if (e.title?.trim()) score += Math.min(e.title.trim().length, 80) + 10;
-  }
-  return score;
-}
-
-export function isEffectivelyEmpty(data: AppData): boolean {
-  return contentScore(data) === 0;
 }
 
 function migrateLegacy(): AppData | null {
@@ -184,6 +178,8 @@ function migrateLegacy(): AppData | null {
       insights: [],
       timeline: [],
       timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+      noteTags: [...DEFAULT_NOTE_TAGS],
+      revision: 1,
     };
     saveAppDataLocal(data, { force: true });
     window.localStorage.removeItem(LEGACY_KEY);
@@ -212,9 +208,10 @@ export function loadAppDataLocal(): AppData {
   const snapshot = readKey(SNAPSHOT_KEY);
 
   if (primary && snapshot) {
-    if (contentScore(snapshot) > contentScore(primary)) {
-      saveAppDataLocal(snapshot, { force: true });
-      return snapshot;
+    const merged = mergeAppData(primary, snapshot);
+    if (contentScore(merged) > contentScore(primary)) {
+      saveAppDataLocal(merged, { force: true });
+      return merged;
     }
     return primary;
   }
@@ -246,26 +243,7 @@ export function loadAppData(): AppData {
   return loadAppDataLocal();
 }
 
-function saveAppDataLocal(
-  data: AppData,
-  opts: { force?: boolean } = {}
-): boolean {
-  if (!isBrowser()) return false;
-
-  if (!opts.force) {
-    const existing = readKey(STORAGE_KEY) ?? readKey(SNAPSHOT_KEY);
-    if (
-      existing &&
-      !isEffectivelyEmpty(existing) &&
-      isEffectivelyEmpty(data)
-    ) {
-      console.warn(
-        "[ikigai] Blocked empty overwrite — your saved data was kept."
-      );
-      return false;
-    }
-  }
-
+function writeLocalRaw(data: AppData): void {
   const json = JSON.stringify(data);
   try {
     window.localStorage.setItem(STORAGE_KEY, json);
@@ -286,6 +264,34 @@ function saveAppDataLocal(
   } catch {
     /* ignore */
   }
+}
+
+function saveAppDataLocal(
+  data: AppData,
+  opts: { force?: boolean } = {}
+): boolean {
+  if (!isBrowser()) return false;
+
+  const existing = readKey(STORAGE_KEY) ?? readKey(SNAPSHOT_KEY);
+
+  if (!opts.force) {
+    const guarded = protectAgainstLoss(existing, data);
+    if (guarded.protected && guarded.reason === "empty_overwrite_blocked") {
+      console.warn(
+        "[ikigai] Blocked empty overwrite — your saved data was kept."
+      );
+      return false;
+    }
+    writeLocalRaw(normalizeAppData(guarded.data));
+    if (guarded.protected) {
+      console.warn(
+        `[ikigai] Local write protected (${guarded.reason}) — kept existing fields.`
+      );
+    }
+    return true;
+  }
+
+  writeLocalRaw(normalizeAppData(data));
   return true;
 }
 
@@ -348,39 +354,44 @@ export async function hydrateAppData(): Promise<AppData> {
   const local = loadAppDataLocal();
   const disk = await fetchDiskData();
 
+  let merged: AppData;
   if (!disk || isEffectivelyEmpty(disk)) {
-    if (!isEffectivelyEmpty(local)) {
-      // Migrate browser data onto disk
-      syncToDisk(local, true);
-    }
-    return local;
+    merged = local;
+  } else if (isEffectivelyEmpty(local)) {
+    merged = disk;
+  } else {
+    // Union-merge so map/notes on one side and timeline on the other are both kept
+    merged = mergeAppData(disk, local);
   }
 
-  if (contentScore(disk) >= contentScore(local)) {
-    saveAppDataLocal(disk, { force: true });
-    return disk;
+  // Advance revision so this session's later saves beat any stale tab
+  merged = bumpRevision(normalizeAppData(merged));
+  saveAppDataLocal(merged, { force: true });
+  if (!isEffectivelyEmpty(merged)) {
+    syncToDisk(merged, true);
   }
-
-  // Browser has newer/richer content — push up to disk
-  syncToDisk(local, true);
-  return local;
+  return merged;
 }
 
 export function saveAppData(
   data: AppData,
   opts: { force?: boolean; skipDisk?: boolean } = {}
 ): void {
-  const wrote = saveAppDataLocal(data, opts);
-  if (wrote && !opts.skipDisk && !isEffectivelyEmpty(data)) {
-    syncToDisk(data);
+  const withRev = opts.force ? data : bumpRevision(data);
+  const wrote = saveAppDataLocal(withRev, opts);
+  if (wrote && !opts.skipDisk && !isEffectivelyEmpty(withRev)) {
+    syncToDisk(withRev);
   }
 }
 
-/** Immediate flush to browser + disk. */
+/** Immediate flush to browser + disk (never writes empty). */
 export function flushAppData(data: AppData): void {
   if (isEffectivelyEmpty(data)) return;
-  saveAppDataLocal(data);
-  syncToDisk(data, true);
+  // Don't bump revision on flush — just persist current session state safely
+  const existing = loadAppDataLocal();
+  const guarded = protectAgainstLoss(existing, data);
+  saveAppDataLocal(guarded.data, { force: true });
+  syncToDisk(guarded.data, true);
 }
 
 export function getMap(): PurposeMap | null {
@@ -391,7 +402,7 @@ export function saveMap(map: PurposeMap): AppData {
   const data = loadAppDataLocal();
   data.map = normalizeMap({ ...map, updatedAt: new Date().toISOString() });
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
 }
 
 export function getNotes(): Note[] {
@@ -402,26 +413,33 @@ export function getNotes(): Note[] {
 
 export function saveNote(note: Note): AppData {
   const data = loadAppDataLocal();
-  const normalized = normalizeNote(note);
+  const vocabulary = normalizeNoteTags(data.noteTags);
+  const normalized = normalizeNote(note, vocabulary);
+  // Ensure any new tags on the note join the vocabulary
+  const nextVocab = normalizeNoteTags([
+    ...vocabulary,
+    ...normalized.tags,
+  ]);
+  data.noteTags = nextVocab;
   const idx = data.notes.findIndex((n) => n.id === normalized.id);
-  if (idx === -1) data.notes.push(normalized);
-  else data.notes[idx] = normalized;
+  if (idx === -1) data.notes.push(normalizeNote(normalized, nextVocab));
+  else data.notes[idx] = normalizeNote(normalized, nextVocab);
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
 }
 
 export function deleteNote(id: string): AppData {
   const data = loadAppDataLocal();
   data.notes = data.notes.filter((n) => n.id !== id);
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
 }
 
 export function saveInsights(insights: InsightIdea[]): AppData {
   const data = loadAppDataLocal();
   data.insights = normalizeInsights(insights);
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
 }
 
 export function saveTimeline(timeline: TimelineEvent[]): AppData {
@@ -432,14 +450,13 @@ export function saveTimeline(timeline: TimelineEvent[]): AppData {
     normalizeTimelineEvent(e, areas, i)
   );
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
 }
 
 export function saveTimelineAreas(areas: TimelineAreaDef[]): AppData {
   const data = loadAppDataLocal();
   const nextAreas = normalizeTimelineAreas(areas);
   data.timelineAreas = nextAreas;
-  // Remap events whose area was deleted → first area
   const ids = new Set(nextAreas.map((a) => a.id));
   const fallback = nextAreas[0]?.id ?? "other";
   data.timeline = (data.timeline ?? []).map((e, i) =>
@@ -450,7 +467,24 @@ export function saveTimelineAreas(areas: TimelineAreaDef[]): AppData {
     )
   );
   saveAppData(data);
-  return data;
+  return loadAppDataLocal();
+}
+
+export function saveNoteTags(noteTags: string[]): AppData {
+  const data = loadAppDataLocal();
+  const nextTags = normalizeNoteTags(noteTags);
+  data.noteTags = nextTags;
+  // Remap note tags: keep those still in vocabulary (case-insensitive)
+  const byKey = new Map(nextTags.map((t) => [t.toLowerCase(), t]));
+  data.notes = data.notes.map((n) => ({
+    ...n,
+    tags: n.tags
+      .map((t) => byKey.get(t.toLowerCase()))
+      .filter((t): t is string => Boolean(t)),
+    updatedAt: new Date().toISOString(),
+  }));
+  saveAppData(data);
+  return loadAppDataLocal();
 }
 
 export function exportMapMarkdown(): string {
@@ -526,7 +560,7 @@ export function exportMapMarkdown(): string {
       const when = e.date ?? "date unknown";
       lines.push(
         `- ${when} · [${label}] ${e.title}${e.note ? ` — ${e.note}` : ""}`
-      ); // date may be YYYY-MM or YYYY-MM-DD
+      );
     }
     lines.push("");
   }
@@ -556,5 +590,7 @@ export function resetAllData(): void {
   } catch {
     /* ignore */
   }
-  void fetch("/api/data", { method: "DELETE" }).catch(() => {});
+  void fetch("/api/data", {
+    method: "DELETE",
+  }).catch(() => {});
 }

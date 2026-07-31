@@ -6,28 +6,10 @@ import {
   readDiskStore,
   writeDiskStore,
 } from "@/lib/disk-store";
+import { isEffectivelyEmpty } from "@/lib/data-safety";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function isEmpty(data: AppData): boolean {
-  const m = data.map;
-  if (m) {
-    if (
-      [m.want, m.goodAt, m.need, m.reward, m.offer, m.synthesis].some((s) =>
-        s?.trim()
-      )
-    ) {
-      return false;
-    }
-    if (m.skillsHave.length || m.skillsLack.length || m.values?.length) {
-      return false;
-    }
-  }
-  if (data.notes?.length || data.insights?.length || data.timeline?.length)
-    return false;
-  return true;
-}
 
 export async function GET() {
   const data = await readDiskStore();
@@ -38,6 +20,8 @@ export async function GET() {
       insights: [],
       timeline: [],
       timelineAreas: [],
+      noteTags: [],
+      revision: 0,
     },
     path: getStorePath(),
     exists: data !== null,
@@ -58,12 +42,18 @@ async function save(req: Request) {
     insights: body.insights ?? [],
     timeline: body.timeline ?? [],
     timelineAreas: body.timelineAreas ?? [],
+    noteTags: body.noteTags ?? [],
+    revision: body.revision ?? 0,
   };
 
-  // Never let an empty payload wipe a rich disk file
-  if (isEmpty(incoming)) {
+  // force only via explicit header (used by reset flows — not by normal saves)
+  const force =
+    req.headers.get("x-ikigai-force") === "1" &&
+    req.headers.get("x-ikigai-confirm-reset") === "1";
+
+  if (!force && isEffectivelyEmpty(incoming)) {
     const existing = await readDiskStore();
-    if (existing && !isEmpty(existing)) {
+    if (existing && !isEffectivelyEmpty(existing)) {
       return NextResponse.json({
         ok: true,
         skipped: true,
@@ -73,8 +63,14 @@ async function save(req: Request) {
     }
   }
 
-  await writeDiskStore(incoming);
-  return NextResponse.json({ ok: true, path: getStorePath() });
+  const result = await writeDiskStore(incoming, { force });
+  return NextResponse.json({
+    ok: true,
+    path: getStorePath(),
+    protected: result.protected,
+    reason: result.reason,
+    revision: result.data.revision ?? 0,
+  });
 }
 
 export async function PUT(req: Request) {

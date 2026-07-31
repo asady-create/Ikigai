@@ -24,9 +24,11 @@ import {
   saveInsights as storageSaveInsights,
   saveMap as storageSaveMap,
   saveNote as storageSaveNote,
+  saveNoteTags as storageSaveNoteTags,
   saveTimeline as storageSaveTimeline,
   saveTimelineAreas as storageSaveTimelineAreas,
 } from "@/lib/storage";
+import { DEFAULT_NOTE_TAGS } from "@/lib/types";
 import { DEFAULT_TIMELINE_AREAS } from "@/lib/timeline";
 
 const EMPTY: AppData = {
@@ -35,6 +37,7 @@ const EMPTY: AppData = {
   insights: [],
   timeline: [],
   timelineAreas: DEFAULT_TIMELINE_AREAS.map((a) => ({ ...a })),
+  noteTags: [...DEFAULT_NOTE_TAGS],
 };
 
 interface IkigaiStore {
@@ -44,6 +47,7 @@ interface IkigaiStore {
   insights: InsightIdea[];
   timeline: TimelineEvent[];
   timelineAreas: TimelineAreaDef[];
+  noteTags: string[];
   diskPath: string | null;
   refresh: () => Promise<void>;
   upsertMap: (map: PurposeMap) => void;
@@ -52,6 +56,7 @@ interface IkigaiStore {
   setInsights: (insights: InsightIdea[]) => void;
   setTimeline: (timeline: TimelineEvent[]) => void;
   setTimelineAreas: (areas: TimelineAreaDef[]) => void;
+  setNoteTags: (tags: string[]) => void;
 }
 
 const IkigaiContext = createContext<IkigaiStore | null>(null);
@@ -93,7 +98,9 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const flush = () => {
+      // Never flush before hydrate — EMPTY initial state must not hit disk
       if (!readyRef.current) return;
+      if (!dataRef.current) return;
       flushAppData(dataRef.current);
     };
     window.addEventListener("beforeunload", flush);
@@ -106,6 +113,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVis);
+      // On provider unmount, only flush if we finished hydrating
       flush();
     };
   }, []);
@@ -146,6 +154,12 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
     setData({ ...next });
   }, []);
 
+  const setNoteTags = useCallback((tags: string[]) => {
+    if (!readyRef.current) return;
+    const next = storageSaveNoteTags(tags);
+    setData({ ...next });
+  }, []);
+
   const notes = [...data.notes].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -156,6 +170,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
 
   const timeline = [...(data.timeline ?? [])];
   const timelineAreas = [...(data.timelineAreas ?? [])];
+  const noteTags = [...(data.noteTags ?? [])];
 
   return (
     <IkigaiContext.Provider
@@ -166,6 +181,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         insights,
         timeline,
         timelineAreas,
+        noteTags,
         diskPath,
         refresh,
         upsertMap,
@@ -174,6 +190,7 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
         setInsights,
         setTimeline,
         setTimelineAreas,
+        setNoteTags,
       }}
     >
       {children}

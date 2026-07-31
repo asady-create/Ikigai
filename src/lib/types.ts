@@ -29,8 +29,8 @@ export interface PurposeMap {
   updatedAt: string;
 }
 
-/** Map-linked tags for notes. */
-export const NOTE_TAGS = [
+/** Default map-linked tags for notes — users can rename, add, or remove. */
+export const DEFAULT_NOTE_TAGS = [
   "Want",
   "Offer",
   "Need",
@@ -41,12 +41,16 @@ export const NOTE_TAGS = [
   "Value",
 ] as const;
 
-export type NoteTag = (typeof NOTE_TAGS)[number];
+/** @deprecated Prefer string tags + AppData.noteTags */
+export const NOTE_TAGS = DEFAULT_NOTE_TAGS;
+
+export type NoteTag = string;
 
 export interface Note {
   id: string;
   content: string;
-  tags: NoteTag[];
+  /** Freeform hashtag labels (from vocabulary or typed). */
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -98,4 +102,11 @@ export interface AppData {
   insights: InsightIdea[];
   timeline: TimelineEvent[];
   timelineAreas: TimelineAreaDef[];
+  /** User-editable hashtag vocabulary for the mini journal. */
+  noteTags: string[];
+  /**
+   * Monotonic save counter. Disk rejects/merges writes with a lower revision
+   * so a stale tab or pre-hydrate payload cannot wipe newer data.
+   */
+  revision?: number;
 }
