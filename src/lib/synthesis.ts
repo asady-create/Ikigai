@@ -1,4 +1,5 @@
 import type { PurposeMap, Skill } from "./types";
+import { resolveSkillsFromRaw, skillsByStatus } from "./skills";
 
 function clean(s: string): string {
   return s.replace(/\s+/g, " ").trim().replace(/[.]+$/, "");
@@ -22,16 +23,20 @@ export function generateSynthesis(map: PurposeMap): string {
   const need = clean(map.need);
   const reward = clean(map.reward);
   const offer = clean(map.offer);
-  const have = skillNames(map.skillsHave);
-  const lack = skillNames(map.skillsLack);
+  const assets = skillNames(skillsByStatus(map.skills ?? [], "asset"));
+  const gaps = skillNames(skillsByStatus(map.skills ?? [], "gap"));
+  const developing = skillNames(
+    skillsByStatus(map.skills ?? [], "developing")
+  );
 
   if (want) parts.push(`I love / want: ${want}.`);
   if (goodAt) parts.push(`I’m good at: ${goodAt}.`);
   if (need) parts.push(`The world needs: ${need}.`);
   if (reward) parts.push(`I can be rewarded by: ${reward}.`);
   if (offer) parts.push(`I will deliver: ${offer}.`);
-  if (have) parts.push(`Skills I have: ${have}.`);
-  if (lack) parts.push(`Skills I still need: ${lack}.`);
+  if (assets) parts.push(`Asset portfolio: ${assets}.`);
+  if (gaps) parts.push(`Development gaps: ${gaps}.`);
+  if (developing) parts.push(`Developing: ${developing}.`);
   if (map.values.length > 0) {
     parts.push(`Values: ${map.values.join(", ")}.`);
   }
@@ -48,8 +53,8 @@ export function mapProgress(map: PurposeMap | null): {
   reward: boolean;
   offer: boolean;
   values: boolean;
-  skillsHave: boolean;
-  skillsLack: boolean;
+  skillsAssets: boolean;
+  skillsGaps: boolean;
   filled: number;
   total: number;
 } {
@@ -60,8 +65,8 @@ export function mapProgress(map: PurposeMap | null): {
     reward: false,
     offer: false,
     values: false,
-    skillsHave: false,
-    skillsLack: false,
+    skillsAssets: false,
+    skillsGaps: false,
     filled: 0,
     total: 8,
   };
@@ -73,8 +78,14 @@ export function mapProgress(map: PurposeMap | null): {
   const reward = Boolean(clean(map.reward));
   const offer = Boolean(clean(map.offer));
   const values = (map.values ?? []).some((v) => v.trim());
-  const skillsHave = map.skillsHave.some((s) => s.name.trim());
-  const skillsLack = map.skillsLack.some((s) => s.name.trim());
+  const skills = map.skills ?? [];
+  const skillsAssets = skills.some(
+    (s) => s.status === "asset" && s.name.trim()
+  );
+  const skillsGaps = skills.some(
+    (s) =>
+      (s.status === "gap" || s.status === "developing") && s.name.trim()
+  );
   const flags = {
     want,
     goodAt,
@@ -82,8 +93,8 @@ export function mapProgress(map: PurposeMap | null): {
     reward,
     offer,
     values,
-    skillsHave,
-    skillsLack,
+    skillsAssets,
+    skillsGaps,
   };
   const filled = Object.values(flags).filter(Boolean).length;
 
@@ -97,24 +108,34 @@ export function createEmptyMap(): PurposeMap {
     reward: "",
     offer: "",
     need: "",
-    skillsHave: [],
-    skillsLack: [],
+    skills: [],
     values: [],
     synthesis: "",
     updatedAt: new Date().toISOString(),
   };
 }
 
-/** Normalize older maps missing fields. */
+/** Normalize older maps missing fields; migrate have/lack → skills. */
 export function normalizeMap(raw: Partial<PurposeMap> | null): PurposeMap {
   const base = createEmptyMap();
   if (!raw) return base;
+  const skills = resolveSkillsFromRaw(raw);
+  // Drop deprecated arrays from the normalized object
+  const {
+    skillsHave: _have,
+    skillsLack: _lack,
+    ...rest
+  } = raw as Partial<PurposeMap> & {
+    skillsHave?: unknown;
+    skillsLack?: unknown;
+  };
+  void _have;
+  void _lack;
   return {
     ...base,
-    ...raw,
+    ...rest,
     goodAt: raw.goodAt ?? "",
-    skillsHave: raw.skillsHave ?? [],
-    skillsLack: raw.skillsLack ?? [],
+    skills,
     values: raw.values ?? [],
   };
 }

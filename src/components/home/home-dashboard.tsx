@@ -52,16 +52,16 @@ const SECTIONS = [
     hint: "Non-negotiables",
   },
   {
-    key: "skillsHave" as const,
-    label: "Skills I have",
+    key: "skillsAssets" as const,
+    label: "Assets",
     href: "/skills",
-    hint: "Inventory",
+    hint: "Portfolio",
   },
   {
-    key: "skillsLack" as const,
-    label: "Skills I lack",
+    key: "skillsGaps" as const,
+    label: "Development areas",
     href: "/skills",
-    hint: "Gaps",
+    hint: "Roadmap",
   },
 ];
 
@@ -284,14 +284,18 @@ export function HomeDashboard() {
         )}
       </section>
 
-      {map && map.skillsLack.some((s) => s.name.trim()) && (
+      {map &&
+        (map.skills ?? []).some(
+          (s) => s.status === "gap" && s.name.trim()
+        ) && (
         <section>
           <h2 className="font-display text-sm font-semibold tracking-[0.14em] text-[var(--muted)] uppercase">
             Gaps to close
           </h2>
           <ul className="mt-3 flex flex-wrap gap-2">
-            {map.skillsLack
-              .filter((s) => s.name.trim())
+            {(map.skills ?? [])
+              .filter((s) => s.status === "gap" && s.name.trim())
+              .sort((a, b) => b.demand - a.demand)
               .map((s) => (
                 <li
                   key={s.id}

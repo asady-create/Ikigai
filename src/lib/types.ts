@@ -2,11 +2,27 @@
  * Ikigai 2.0 — personal purpose map.
  */
 
+export type SkillType = "knowledge" | "skill" | "proof" | "relationship";
+
+/** Derived from proficiency × demand — do not set manually. */
+export type SkillStatus = "asset" | "gap" | "developing";
+
 export interface Skill {
   id: string;
   name: string;
-  /** Optional one-line context. */
-  note: string;
+  type: SkillType;
+  /** How good you actually are (1–5), not confidence. */
+  proficiency: number;
+  /** How much the target direction needs it (1–5). */
+  demand: number;
+  /** Project, result, or artifact that proves this. */
+  evidence: string;
+  /** Goal/role this item is evaluated against. */
+  targetDirection: string;
+  /** Computed from proficiency + demand. */
+  status: SkillStatus;
+  /** ISO timestamp of last review. */
+  lastReviewed: string;
 }
 
 export interface PurposeMap {
@@ -20,8 +36,17 @@ export interface PurposeMap {
   reward: string;
   /** What you will deliver (center / offer). */
   offer: string;
-  skillsHave: Skill[];
-  skillsLack: Skill[];
+  /** Asset portfolio + development roadmap items. */
+  skills: Skill[];
+  /**
+   * @deprecated Migrated into `skills`. Kept optional so older payloads
+   * can still be read once during normalizeMap.
+   */
+  skillsHave?: { id: string; name: string; note?: string }[];
+  /**
+   * @deprecated Migrated into `skills`.
+   */
+  skillsLack?: { id: string; name: string; note?: string }[];
   /** Non-negotiable values that guide choices. */
   values: string[];
   /** Plain synthesis of the above. Editable. */
