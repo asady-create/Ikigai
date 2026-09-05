@@ -24,8 +24,6 @@ const APP_SHELL_ROUTES = [
   "/skills",
   "/insights",
   "/timeline",
-  "/canvas",
-  "/reflections",
   "/offline",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
