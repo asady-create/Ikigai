@@ -326,12 +326,9 @@ async function handleDocument(
   pathname: string
 ): Promise<Response> {
   const cached = await matchPage(pathname);
-
-  // Chrome DevTools "Offline" sets onLine=false. Prefer cache so the
-  // navigation is not a failed network request in the Network tab.
-  if (!self.navigator.onLine && cached) {
-    return cached;
-  }
+  // Cache-first for documents. A network probe here shows as a red
+  // sw.js fetch in DevTools when the machine is offline.
+  if (cached) return cached;
 
   const href = new URL(pathname, self.location.origin).href;
   const fresh = await fetchFresh(request, href);
@@ -340,7 +337,7 @@ async function handleDocument(
     return fresh;
   }
 
-  return cached || (await offlineFallback());
+  return offlineFallback();
 }
 
 async function handleRsc(
@@ -348,42 +345,37 @@ async function handleRsc(
   pathname: string
 ): Promise<Response> {
   const cached = await matchRsc(pathname);
-
-  if (!self.navigator.onLine && cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   const href = new URL(pathname, self.location.origin).href;
   const fresh = await fetchFresh(request, href, 2500, false);
   if (fresh) {
-    void caches.open(RSC).then((cache) =>
-      cache.put(rscRequest(pathname), toCacheable(fresh.clone()))
-    ).catch(() => {});
+    void caches
+      .open(RSC)
+      .then((cache) =>
+        cache.put(rscRequest(pathname), toCacheable(fresh.clone()))
+      )
+      .catch(() => {});
     return fresh;
   }
 
-  if (cached) return cached;
   return offlineRsc(pathname);
 }
 
 async function staleWhileRevalidate(request: Request): Promise<Response> {
   const cached = await caches.match(request, MATCH_OPTS);
-  if (!self.navigator.onLine && cached) return cached;
+  if (cached) return cached;
 
   try {
-    const fresh = await Promise.race([
-      fetch(request),
-      timeoutNull(2500),
-    ]);
+    const fresh = await Promise.race([fetch(request), timeoutNull(2500)]);
     if (fresh && fresh.ok) {
       const cache = await caches.open(RUNTIME);
-      await cache.put(request, toCacheable(fresh.clone()));
+      void cache.put(request, toCacheable(fresh.clone())).catch(() => {});
       return fresh;
     }
   } catch {
     /* fall through */
   }
 
-  if (cached) return cached;
   return new Response("", { status: 504, statusText: "Offline" });
 }
