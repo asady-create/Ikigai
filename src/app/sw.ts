@@ -24,7 +24,7 @@ declare const self: SwGlobal;
 
 export {};
 
-const PRECACHE = "ikigai-precache-v5";
+const PRECACHE = "ikigai-precache-v6";
 const PAGES = "ikigai-pages-v3";
 const RSC = "ikigai-rsc-v2";
 const RUNTIME = "ikigai-runtime-v3";
@@ -105,6 +105,29 @@ async function fetchOk(url: string): Promise<Response | null> {
     return response && response.ok ? response : null;
   } catch {
     return null;
+  }
+}
+
+/** Read + store one URL. Timeouts include the body — Next streams can hang. */
+async function storeUrl(cache: Cache, url: string): Promise<boolean> {
+  const response = await fetchOk(url);
+  if (!response) return false;
+  try {
+    const body = await Promise.race([response.arrayBuffer(), timeoutNull(2000)]);
+    if (!body) return false;
+    const headers = new Headers(response.headers);
+    headers.delete("Vary");
+    headers.set("X-Ikigai-Cache", "1");
+    const stored = new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+    const put = cache.put(pageRequest(url), stored);
+    const done = await Promise.race([put.then(() => true), timeoutNull(2000)]);
+    return Boolean(done);
+  } catch {
+    return false;
   }
 }
 
@@ -228,17 +251,22 @@ function offlineRsc(pathname: string): Response {
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(PRECACHE);
-      // HTML shell first — Next document fetches can stall if we do them last.
-      const urls = [...new Set([...APP_SHELL, ...manifestUrls()])];
-      let stored = 0;
-      for (const url of urls) {
-        const response = await fetchOk(url);
-        if (!response) continue;
-        await cache.put(pageRequest(url), toCacheable(response));
-        stored += 1;
+      try {
+        const cache = await caches.open(PRECACHE);
+        // HTML shell first — Next document fetches can stall if we do them last.
+        const urls = [...new Set([...APP_SHELL, ...manifestUrls()])];
+        const precache = async () => {
+          let stored = 0;
+          for (const url of urls) {
+            if (await storeUrl(cache, url)) stored += 1;
+          }
+          console.info("[ikigai-sw] precached", stored, "urls");
+        };
+        // Never stay "installing" forever — activation is required for offline.
+        await Promise.race([precache(), timeoutNull(20000)]);
+      } catch (error) {
+        console.warn("[ikigai-sw] install error", error);
       }
-      console.info("[ikigai-sw] precached", stored, "urls");
       await self.skipWaiting();
     })()
   );
@@ -308,11 +336,7 @@ async function handleDocument(
   const href = new URL(pathname, self.location.origin).href;
   const fresh = await fetchFresh(request, href);
   if (fresh) {
-    try {
-      await putPath(PAGES, pathname, fresh.clone());
-    } catch {
-      /* cache write is best-effort */
-    }
+    void putPath(PAGES, pathname, fresh.clone()).catch(() => {});
     return fresh;
   }
 
@@ -332,12 +356,9 @@ async function handleRsc(
   const href = new URL(pathname, self.location.origin).href;
   const fresh = await fetchFresh(request, href, 2500, false);
   if (fresh) {
-    try {
-      const cache = await caches.open(RSC);
-      await cache.put(rscRequest(pathname), toCacheable(fresh.clone()));
-    } catch {
-      /* cache write is best-effort */
-    }
+    void caches.open(RSC).then((cache) =>
+      cache.put(rscRequest(pathname), toCacheable(fresh.clone()))
+    ).catch(() => {});
     return fresh;
   }
 
