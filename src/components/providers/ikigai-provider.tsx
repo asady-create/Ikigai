@@ -77,19 +77,26 @@ export function IkigaiProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const meta = await fetch("/api/data", { cache: "no-store" })
-          .then((r) => r.json())
-          .catch(() => null);
-        if (!cancelled && meta?.path) setDiskPath(meta.path as string);
-      } catch {
-        /* ignore */
-      }
+      // Local data first so offline never sits on "Loading saved data…".
       const loaded = await hydrateAppData();
       if (cancelled) return;
       setData(loaded);
       readyRef.current = true;
       setReady(true);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      try {
+        const meta = await fetch("/api/data", {
+          cache: "no-store",
+          signal: controller.signal,
+        }).then((r) => r.json());
+        if (!cancelled && meta?.path) setDiskPath(meta.path as string);
+      } catch {
+        /* offline or no disk backup */
+      } finally {
+        clearTimeout(timer);
+      }
     })();
     return () => {
       cancelled = true;

@@ -339,11 +339,27 @@ export function syncToDisk(data: AppData, immediate = false): void {
   diskTimer = setTimeout(send, 200);
 }
 
+async function fetchWithTimeout(
+  url: string,
+  ms = 1500,
+  init?: RequestInit
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchDiskData(): Promise<AppData | null> {
   if (!isBrowser()) return null;
   try {
-    const res = await fetch("/api/data", { cache: "no-store" });
-    if (!res.ok) return null;
+    const res = await fetchWithTimeout("/api/data", 1500, { cache: "no-store" });
+    if (!res?.ok) return null;
     const json = (await res.json()) as { data?: Partial<AppData> };
     if (!json.data) return null;
     return normalizeAppData(json.data);

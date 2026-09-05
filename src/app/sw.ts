@@ -24,7 +24,7 @@ declare const self: SwGlobal;
 
 export {};
 
-const PRECACHE = "ikigai-precache-v6";
+const PRECACHE = "ikigai-precache-v7";
 const PAGES = "ikigai-pages-v3";
 const RSC = "ikigai-rsc-v2";
 const RUNTIME = "ikigai-runtime-v3";
@@ -248,22 +248,35 @@ function offlineRsc(pathname: string): Response {
   });
 }
 
+async function storeMany(
+  cache: Cache,
+  urls: string[],
+  concurrency: number
+): Promise<number> {
+  const unique = [...new Set(urls)];
+  let stored = 0;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < unique.length) {
+      const url = unique[cursor];
+      cursor += 1;
+      if (await storeUrl(cache, url)) stored += 1;
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, unique.length) }, () => worker())
+  );
+  return stored;
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       try {
         const cache = await caches.open(PRECACHE);
-        // HTML shell first — Next document fetches can stall if we do them last.
-        const urls = [...new Set([...APP_SHELL, ...manifestUrls()])];
-        const precache = async () => {
-          let stored = 0;
-          for (const url of urls) {
-            if (await storeUrl(cache, url)) stored += 1;
-          }
-          console.info("[ikigai-sw] precached", stored, "urls");
-        };
-        // Never stay "installing" forever — activation is required for offline.
-        await Promise.race([precache(), timeoutNull(20000)]);
+        // Only the HTML shell blocks activation. Webpack assets fill after.
+        const stored = await storeMany(cache, APP_SHELL, 8);
+        console.info("[ikigai-sw] shell ready", stored, "urls");
       } catch (error) {
         console.warn("[ikigai-sw] install error", error);
       }
@@ -282,6 +295,11 @@ self.addEventListener("activate", (event) => {
           .map((name) => caches.delete(name))
       );
       await self.clients.claim();
+      const cache = await caches.open(PRECACHE);
+      const rest = manifestUrls().filter((url) => !APP_SHELL.includes(url));
+      void storeMany(cache, rest, 8)
+        .then((stored) => console.info("[ikigai-sw] assets ready", stored, "urls"))
+        .catch((error) => console.warn("[ikigai-sw] asset precache error", error));
     })()
   );
 });
