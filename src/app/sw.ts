@@ -30,6 +30,8 @@ const RSC = "ikigai-rsc-v2";
 const RUNTIME = "ikigai-runtime-v3";
 
 const APP_SHELL = [
+  "/offline.html",
+  "/offline",
   "/",
   "/map",
   "/notes",
@@ -41,8 +43,6 @@ const APP_SHELL = [
   "/canvas",
   "/reflections",
   "/reflect",
-  "/offline",
-  "/offline.html",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

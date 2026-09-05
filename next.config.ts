@@ -11,6 +11,8 @@ const revision =
   crypto.randomUUID();
 
 const APP_SHELL_ROUTES = [
+  "/offline.html",
+  "/offline",
   "/",
   "/map",
   "/notes",
@@ -22,8 +24,6 @@ const APP_SHELL_ROUTES = [
   "/canvas",
   "/reflections",
   "/reflect",
-  "/offline",
-  "/offline.html",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
