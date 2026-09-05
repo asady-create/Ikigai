@@ -42,24 +42,43 @@ export function ServiceWorkerRegister() {
       }
     };
 
+    const isRscInput = (input: RequestInfo | URL, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      return (
+        request.headers.get("RSC") === "1" ||
+        request.headers.has("Next-Router-State-Tree") ||
+        request.headers.has("Next-Router-Prefetch") ||
+        (typeof input === "string" && input.includes("_rsc=")) ||
+        (input instanceof URL && input.searchParams.has("_rsc")) ||
+        new URL(request.url, window.location.origin).searchParams.has("_rsc")
+      );
+    };
+
     const originalFetch = window.fetch.bind(window);
     const patchedFetch: typeof fetch = async (input, init) => {
       try {
-        return await originalFetch(input, init);
+        const response = await originalFetch(input, init);
+        if (
+          !navigator.onLine &&
+          response.status === 503 &&
+          response.headers.get("X-Ikigai-Offline") === "1"
+        ) {
+          const path =
+            response.headers.get("X-Ikigai-Offline-Path") ||
+            new URL(
+              input instanceof Request ? input.url : String(input),
+              window.location.origin
+            ).pathname;
+          loadDocument(path);
+        }
+        return response;
       } catch (error) {
         if (navigator.onLine) throw error;
-        const request =
-          input instanceof Request ? input : new Request(input, init);
-        const rsc =
-          request.headers.get("RSC") === "1" ||
-          request.headers.has("Next-Router-State-Tree") ||
-          (typeof input === "string" && input.includes("_rsc=")) ||
-          (input instanceof URL && input.searchParams.has("_rsc")) ||
-          (input instanceof Request &&
-            new URL(input.url).searchParams.has("_rsc"));
-        if (rsc) {
-          const url = new URL(request.url, window.location.origin);
-          loadDocument(url.pathname);
+        if (isRscInput(input, init)) {
+          const request =
+            input instanceof Request ? input : new Request(input, init);
+          loadDocument(new URL(request.url, window.location.origin).pathname);
         }
         throw error;
       }

@@ -10,6 +10,8 @@
  * Client <Link> clicks are RSC fetches (?_rsc=), not mode=navigate.
  * Those are cached by pathname and fall back to a 503 the page converter
  * turns into a full document load of the cached HTML.
+ *
+ * Do not use AbortSignal.timeout here — it is missing on older iOS.
  */
 
 type PrecacheEntry = string | { url: string; revision?: string | null };
@@ -22,10 +24,10 @@ declare const self: SwGlobal;
 
 export {};
 
-const PRECACHE = "ikigai-precache-v4";
-const PAGES = "ikigai-pages-v2";
-const RSC = "ikigai-rsc-v1";
-const RUNTIME = "ikigai-runtime-v2";
+const PRECACHE = "ikigai-precache-v5";
+const PAGES = "ikigai-pages-v3";
+const RSC = "ikigai-rsc-v2";
+const RUNTIME = "ikigai-runtime-v3";
 
 const APP_SHELL = [
   "/",
@@ -36,6 +38,8 @@ const APP_SHELL = [
   "/skills",
   "/insights",
   "/timeline",
+  "/canvas",
+  "/reflections",
   "/reflect",
   "/offline",
   "/offline.html",
@@ -44,6 +48,8 @@ const APP_SHELL = [
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
 ];
+
+const MATCH_OPTS = { ignoreSearch: true, ignoreVary: true } as const;
 
 function manifestUrls(): string[] {
   return (self.__SW_MANIFEST ?? []).map((entry) =>
@@ -102,8 +108,34 @@ async function fetchOk(url: string): Promise<Response | null> {
   }
 }
 
+async function fetchFresh(
+  request: Request,
+  href: string,
+  ms = 2500,
+  allowPlainGet = true
+): Promise<Response | null> {
+  try {
+    const response = await Promise.race([
+      fetch(request),
+      timeoutNull(ms),
+    ]);
+    if (response && response.ok) return response;
+  } catch {
+    /* try a plain GET next */
+  }
+  if (!allowPlainGet) return null;
+  try {
+    const response = await Promise.race([
+      fetch(href, { credentials: "same-origin" }),
+      timeoutNull(ms),
+    ]);
+    return response && response.ok ? response : null;
+  } catch {
+    return null;
+  }
+}
+
 async function matchPage(pathname: string): Promise<Response | undefined> {
-  const ignore = { ignoreSearch: true, ignoreVary: true } as const;
   const absolute = new URL(pathname, self.location.origin).href;
   const candidates: Array<string | Request> = [
     pathname,
@@ -112,7 +144,7 @@ async function matchPage(pathname: string): Promise<Response | undefined> {
   ];
 
   for (const key of candidates) {
-    const hit = await caches.match(key, ignore);
+    const hit = await caches.match(key, MATCH_OPTS);
     if (hit) return hit;
   }
 
@@ -121,12 +153,32 @@ async function matchPage(pathname: string): Promise<Response | undefined> {
     for (const request of await cache.keys()) {
       try {
         if (new URL(request.url).pathname === pathname) {
-          const hit = await cache.match(request, ignore);
+          const hit = await cache.match(request, MATCH_OPTS);
           if (hit) return hit;
         }
       } catch {
         /* ignore bad keys */
       }
+    }
+  }
+  return undefined;
+}
+
+async function matchRsc(pathname: string): Promise<Response | undefined> {
+  const hit = await caches.match(rscRequest(pathname), MATCH_OPTS);
+  if (hit) return hit;
+
+  // Only return a payload that was stored as RSC — HTML will break the
+  // App Router flight parser.
+  const cache = await caches.open(RSC);
+  for (const request of await cache.keys()) {
+    try {
+      if (new URL(request.url).pathname === pathname) {
+        const cached = await cache.match(request, MATCH_OPTS);
+        if (cached) return cached;
+      }
+    } catch {
+      /* ignore bad keys */
     }
   }
   return undefined;
@@ -157,8 +209,20 @@ function isRscRequest(request: Request, url: URL): boolean {
     url.searchParams.has("_rsc") ||
     request.headers.get("RSC") === "1" ||
     request.headers.has("Next-Router-State-Tree") ||
+    request.headers.has("Next-Router-Prefetch") ||
     request.headers.has("Next-Url")
   );
+}
+
+function offlineRsc(pathname: string): Response {
+  return new Response(null, {
+    status: 503,
+    statusText: "Offline",
+    headers: {
+      "X-Ikigai-Offline": "1",
+      "X-Ikigai-Offline-Path": pathname,
+    },
+  });
 }
 
 self.addEventListener("install", (event) => {
@@ -167,11 +231,14 @@ self.addEventListener("install", (event) => {
       const cache = await caches.open(PRECACHE);
       // HTML shell first — Next document fetches can stall if we do them last.
       const urls = [...new Set([...APP_SHELL, ...manifestUrls()])];
+      let stored = 0;
       for (const url of urls) {
         const response = await fetchOk(url);
         if (!response) continue;
         await cache.put(pageRequest(url), toCacheable(response));
+        stored += 1;
       }
+      console.info("[ikigai-sw] precached", stored, "urls");
       await self.skipWaiting();
     })()
   );
@@ -205,83 +272,97 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
-  if (isDocumentRequest(request)) {
-    event.respondWith(handleDocument(request, url.pathname));
-    return;
-  }
+  const pathname = url.pathname;
 
-  if (isRscRequest(request, url)) {
-    event.respondWith(handleRsc(request, url.pathname));
-    return;
-  }
+  try {
+    if (isDocumentRequest(request)) {
+      event.respondWith(handleDocument(request, pathname));
+      return;
+    }
 
-  event.respondWith(staleWhileRevalidate(request));
+    if (isRscRequest(request, url)) {
+      event.respondWith(handleRsc(request, pathname));
+      return;
+    }
+
+    event.respondWith(staleWhileRevalidate(request));
+  } catch {
+    if (isDocumentRequest(request)) {
+      event.respondWith(offlineFallback());
+    }
+  }
 });
 
 async function handleDocument(
   request: Request,
   pathname: string
 ): Promise<Response> {
-  try {
-    const fresh = await fetch(request);
-    if (fresh.ok) {
+  const cached = await matchPage(pathname);
+
+  // Chrome DevTools "Offline" sets onLine=false. Prefer cache so the
+  // navigation is not a failed network request in the Network tab.
+  if (!self.navigator.onLine && cached) {
+    return cached;
+  }
+
+  const href = new URL(pathname, self.location.origin).href;
+  const fresh = await fetchFresh(request, href);
+  if (fresh) {
+    try {
       await putPath(PAGES, pathname, fresh.clone());
+    } catch {
+      /* cache write is best-effort */
     }
     return fresh;
-  } catch {
-    return (
-      (await matchPage(pathname)) ||
-      (await matchPage("/offline")) ||
-      (await offlineFallback())
-    );
   }
+
+  return cached || (await offlineFallback());
 }
 
 async function handleRsc(
   request: Request,
   pathname: string
 ): Promise<Response> {
-  try {
-    const fresh = await fetch(request);
-    if (fresh.ok) {
+  const cached = await matchRsc(pathname);
+
+  if (!self.navigator.onLine && cached) {
+    return cached;
+  }
+
+  const href = new URL(pathname, self.location.origin).href;
+  const fresh = await fetchFresh(request, href, 2500, false);
+  if (fresh) {
+    try {
       const cache = await caches.open(RSC);
       await cache.put(rscRequest(pathname), toCacheable(fresh.clone()));
+    } catch {
+      /* cache write is best-effort */
     }
     return fresh;
-  } catch {
-    const cached = await caches.match(rscRequest(pathname), {
-      ignoreSearch: true,
-      ignoreVary: true,
-    });
-    if (cached) return cached;
-
-    // No flight payload. Signal the client to do a full document load
-    // of the cached HTML instead of a dead RSC parse.
-    return new Response(null, {
-      status: 503,
-      statusText: "Offline",
-      headers: {
-        "X-Ikigai-Offline": "1",
-        "X-Ikigai-Offline-Path": pathname,
-      },
-    });
   }
+
+  if (cached) return cached;
+  return offlineRsc(pathname);
 }
 
 async function staleWhileRevalidate(request: Request): Promise<Response> {
-  const cached = await caches.match(request, {
-    ignoreSearch: true,
-    ignoreVary: true,
-  });
+  const cached = await caches.match(request, MATCH_OPTS);
+  if (!self.navigator.onLine && cached) return cached;
+
   try {
-    const fresh = await fetch(request);
-    if (fresh.ok) {
+    const fresh = await Promise.race([
+      fetch(request),
+      timeoutNull(2500),
+    ]);
+    if (fresh && fresh.ok) {
       const cache = await caches.open(RUNTIME);
       await cache.put(request, toCacheable(fresh.clone()));
+      return fresh;
     }
-    return fresh;
   } catch {
-    if (cached) return cached;
-    return new Response("", { status: 504, statusText: "Offline" });
+    /* fall through */
   }
+
+  if (cached) return cached;
+  return new Response("", { status: 504, statusText: "Offline" });
 }

@@ -5,6 +5,8 @@ const LINKS = [
   { href: "/daily", label: "Daily" },
   { href: "/growth", label: "Growth" },
   { href: "/skills", label: "Skills" },
+  { href: "/insights", label: "Insights" },
+  { href: "/timeline", label: "Timeline" },
 ];
 
 export default function OfflinePage() {

@@ -19,6 +19,8 @@ const APP_SHELL_ROUTES = [
   "/skills",
   "/insights",
   "/timeline",
+  "/canvas",
+  "/reflections",
   "/reflect",
   "/offline",
   "/offline.html",
