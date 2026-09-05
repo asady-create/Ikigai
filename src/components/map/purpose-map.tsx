@@ -136,7 +136,7 @@ export function PurposeMapPage() {
       />
 
       <p className="text-center text-xs text-[var(--muted)]">
-        Skill inventory lives on{" "}
+        Asset portfolio lives on{" "}
         <Link href="/skills" className="text-[var(--accent)] hover:underline">
           Skills
         </Link>

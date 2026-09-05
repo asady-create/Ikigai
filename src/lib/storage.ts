@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { DEFAULT_NOTE_TAGS } from "./types";
 import { createEmptyMap, normalizeMap } from "./synthesis";
+import { migrateHaveLackToSkills, skillsByStatus } from "./skills";
 import {
   normalizeNoteTagList,
   normalizeNoteTags,
@@ -147,15 +148,20 @@ function migrateLegacy(): AppData | null {
       map.need = ik.worldNeeds ?? "";
       map.reward = ik.paidFor ?? "";
       if (ik.goodAt?.trim()) {
-        map.skillsHave = ik.goodAt
-          .split(/[,\n]/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map((name, i) => ({
-            id: `migrated-have-${i}`,
-            name,
-            note: "",
-          }));
+        map.skills = migrateHaveLackToSkills(
+          ik.goodAt
+            .split(/[,\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((name, i) => ({
+              id: `migrated-have-${i}`,
+              name,
+              note: "",
+            })),
+          [],
+          map.want,
+          map.offer
+        );
       }
       map.synthesis = parsed.canvas?.visionStatement ?? "";
     }
@@ -333,11 +339,27 @@ export function syncToDisk(data: AppData, immediate = false): void {
   diskTimer = setTimeout(send, 200);
 }
 
+async function fetchWithTimeout(
+  url: string,
+  ms = 1500,
+  init?: RequestInit
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchDiskData(): Promise<AppData | null> {
   if (!isBrowser()) return null;
   try {
-    const res = await fetch("/api/data", { cache: "no-store" });
-    if (!res.ok) return null;
+    const res = await fetchWithTimeout("/api/data", 1500, { cache: "no-store" });
+    if (!res?.ok) return null;
     const json = (await res.json()) as { data?: Partial<AppData> };
     if (!json.data) return null;
     return normalizeAppData(json.data);
@@ -508,19 +530,41 @@ export function exportMapMarkdown(): string {
       for (const v of map.values) lines.push(`- ${v}`);
       lines.push("");
     }
-    lines.push("## Skills I have", "");
-    if (map.skillsHave.length === 0) lines.push("—", "");
+    lines.push("## Asset portfolio", "");
+    const assets = skillsByStatus(map.skills ?? [], "asset");
+    if (assets.length === 0) lines.push("—", "");
     else {
-      for (const s of map.skillsHave) {
-        lines.push(`- ${s.name}${s.note ? ` — ${s.note}` : ""}`);
+      for (const s of assets) {
+        lines.push(
+          `- ${s.name} [${s.type}] P${s.proficiency}/D${s.demand}` +
+            (s.evidence ? ` — ${s.evidence}` : "") +
+            (s.targetDirection ? ` (→ ${s.targetDirection})` : "")
+        );
       }
       lines.push("");
     }
-    lines.push("## Skills I lack", "");
-    if (map.skillsLack.length === 0) lines.push("—", "");
+    lines.push("## Development gaps", "");
+    const gaps = skillsByStatus(map.skills ?? [], "gap");
+    if (gaps.length === 0) lines.push("—", "");
     else {
-      for (const s of map.skillsLack) {
-        lines.push(`- ${s.name}${s.note ? ` — ${s.note}` : ""}`);
+      for (const s of gaps) {
+        lines.push(
+          `- ${s.name} [${s.type}] P${s.proficiency}/D${s.demand}` +
+            (s.evidence ? ` — ${s.evidence}` : "") +
+            (s.targetDirection ? ` (→ ${s.targetDirection})` : "")
+        );
+      }
+      lines.push("");
+    }
+    const developing = skillsByStatus(map.skills ?? [], "developing");
+    if (developing.length > 0) {
+      lines.push("## Developing", "");
+      for (const s of developing) {
+        lines.push(
+          `- ${s.name} [${s.type}] P${s.proficiency}/D${s.demand}` +
+            (s.evidence ? ` — ${s.evidence}` : "") +
+            (s.targetDirection ? ` (→ ${s.targetDirection})` : "")
+        );
       }
       lines.push("");
     }

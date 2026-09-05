@@ -37,11 +37,11 @@ export function contentScore(data: AppData): number {
     ]) {
       if (s?.trim()) score += Math.min(s.trim().length, 200);
     }
-    score += m.skillsHave.length * 20;
-    score += m.skillsLack.length * 20;
+    score += (m.skills?.length ?? 0) * 20;
     score += (m.values?.length ?? 0) * 10;
-    for (const sk of [...m.skillsHave, ...m.skillsLack]) {
-      if (sk.note?.trim()) score += Math.min(sk.note.trim().length, 80);
+    for (const sk of m.skills ?? []) {
+      if (sk.evidence?.trim())
+        score += Math.min(sk.evidence.trim().length, 80);
     }
   }
   for (const n of data.notes ?? []) {
